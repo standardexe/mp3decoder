@@ -2,8 +2,10 @@
 
 const float M_PI = 3.14159265359;
 
+// ISO/IEC 11172-3 (2.4.2.3)
 int table_layer[] = { -1, 3, 2, 1 };
 
+// ISO/IEC 11172-3 (2.4.2.3)
 int table_bitrate_per_layer[][16] = {
 	{0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, -1},
 	{0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, -1},
@@ -76,12 +78,16 @@ float table_scale_factors[] = {
 	0.00000120155435,
 };
 
+// ISO/IEC 11172-3 (2.4.2.3)
 int table_samplerate[] = { 44100, 48000, 32000 };
 
+// ISO/IEC 11172-3 (2.4.2.3)
 int table_bounds[] = { 4, 8, 12, 16 };
 
+// ISO/IEC 11172-3 (2.4.2.5)
 int table_allocation[] = { 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1 };
 
+// ISO/IEC 11172-3 (Table B.3)
 float table_window[] = {
 	0.000000000,
 	-0.000015259,
@@ -597,6 +603,7 @@ float table_window[] = {
 	0.000015259
 };
 
+// ISO/IEC 11172-3 (Table B.2a)
 const int layer_II_quantizations_a_sblimit = 27;
 int layer_II_quantizations_a_nbal[] = { 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 0, 0, 0, 0, 0 };
 int layer_II_quantizations_a[32][16] = {
@@ -633,6 +640,7 @@ int layer_II_quantizations_a[32][16] = {
 	{0, -1, -1,  -1, -1, -1, -1,  -1, -1,  -1,   -1,   -1,   -1,    -1,    -1,    -1},
 };
 
+// ISO/IEC 11172-3 (Table B.2b)
 const int layer_II_quantizations_b_sblimit = 30;
 int layer_II_quantizations_b_nbal[] = { 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 0, 0 };
 int layer_II_quantizations_b[32][16] = {
@@ -670,7 +678,7 @@ int layer_II_quantizations_b[32][16] = {
 	{0, -1, -1,  -1, -1, -1, -1,  -1, -1,  -1,   -1,   -1,   -1,    -1,    -1,    -1},
 };
 
-
+// ISO/IEC 11172-3 (Table B.2c)
 const int layer_II_quantizations_c_sblimit = 8;
 int layer_II_quantizations_c_nbal[] = { 4, 4, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 int layer_II_quantizations_c[32][16] = {
@@ -706,6 +714,7 @@ int layer_II_quantizations_c[32][16] = {
 	{0, -1, -1, -1, -1, -1, -1, -1, -1, -1,   -1,   -1,   -1,   -1,    -1,    -1},
 };
 
+// ISO/IEC 11172-3 (Table B.2d)
 const int layer_II_quantizations_d_sblimit = 12;
 int layer_II_quantizations_d_nbal[] = { 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 int layer_II_quantizations_d[32][16] = {
@@ -743,6 +752,7 @@ int layer_II_quantizations_d[32][16] = {
 	{0, -1, -1, -1, -1, -1, -1, -1, -1, -1,   -1,   -1,   -1,   -1,    -1,    -1},
 };
 
+// ISO/IEC 11172-3 (Table B.4)
 float layer_II_quantization_class_C[] = {
 	1.33333333333,
 	1.60000000000,
@@ -763,6 +773,7 @@ float layer_II_quantization_class_C[] = {
 	1.00001525902
 };
 
+// ISO/IEC 11172-3 (Table B.4)
 float layer_II_quantization_class_D[] = {
 	0.50000000000,
 	0.50000000000,
@@ -783,18 +794,22 @@ float layer_II_quantization_class_D[] = {
 	0.00003051758
 };
 
+// ISO/IEC 11172-3 (Table B.4)
 int layer_II_quantization_class_num_steps[] = {
 	3, 5, 7, 9, 15, 31, 63, 127, 255, 511, 1023, 2047, 4095, 8191, 16383, 32767, 65535
 };
 
+// ISO/IEC 11172-3 (Table B.4)
 bool layer_II_quantization_class_group[] = {
 	true, true, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false
 };
 
+// ISO/IEC 11172-3 (Table B.4)
 int layer_II_quantization_class_samples_per_cw[] = {
 	3, 3, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
 };
 
+// ISO/IEC 11172-3 (Table B.4)
 int layer_II_quantization_class_bits_per_cw[] = {
 	5, 7, 3, 10, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
 };

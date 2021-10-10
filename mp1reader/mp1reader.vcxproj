@@ -140,11 +140,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="bitbuf_view.cpp" />
     <ClCompile Include="mp1reader.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="bitbuf_view.h" />
+    <ClInclude Include="bitstream.h" />
     <ClInclude Include="tables.h" />
     <ClInclude Include="wav.h" />
   </ItemGroup>

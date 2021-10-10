@@ -1,5 +1,4 @@
-#ifndef BIT_BUFFER_HPP_
-#define BIT_BUFFER_HPP_
+#pragma once
 
 class BitStream {
 public:
@@ -11,15 +10,6 @@ public:
 	}
 
 	bool eof() const { return current_byte >= size; }
-
-	template<typename T = int>
-	T read_bits_msb(size_t count) {
-		T result = 0;
-		for (size_t i = 0; i < count; i++) {
-			result |= read_bit() << i;
-		}
-		return result;
-	}
 
 	template<typename T = int>
 	T read_bits(size_t count) {
@@ -53,5 +43,3 @@ private:
 	}
 
 };
-
-#endif

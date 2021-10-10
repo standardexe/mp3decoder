@@ -18,12 +18,9 @@
     <ClCompile Include="mp1reader.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="bitbuf_view.cpp">
-      <Filter>Quelldateien</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="bitbuf_view.h">
+    <ClInclude Include="bitstream.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="tables.h">
