@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <functional>
 
 #include "bitstream.h"
 #include "tables.h"
@@ -149,6 +150,18 @@ layer_II_quantization_table_info layer_II_get_quantization_table(const Header& h
     throw std::exception();
 }
 
+void loop_over_sb_and_ch(int channels, int bound, int bound_limit, std::function<void(int ch, int sb, bool is_intensity)> f) {
+    for (size_t sb = 0; sb < bound; sb++) {
+        for (size_t ch = 0; ch < channels; ch++) {
+            f(ch, sb, false);
+        }
+    }
+
+    for (size_t sb = bound; sb < bound_limit; sb++) {
+        f(0, sb, true);
+    }
+}
+
 AudioDataII read_audio_data_II(const Header& header, BitStream& bitstream) {
     AudioDataII data;
 
@@ -158,56 +171,42 @@ AudioDataII read_audio_data_II(const Header& header, BitStream& bitstream) {
     const int sblimit = quantization_info.sblimit;
     const int bound = sblimit; // TODO: for Joint Stereo this is not true
 
-    for (size_t sb = 0; sb < bound; sb++) {
-        for (size_t ch = 0; ch < channels; ch++) {
-            const int nbal = (*quantization_info.nbal)[sb];
-            const int al = bitstream.read_bits(nbal);
-            data.allocations[ch][sb] = (*quantization_info.table)[sb][al];
-        }
-    }
-
-    for (size_t sb = bound; sb < sblimit; sb++) {
+    loop_over_sb_and_ch(channels, bound, sblimit, [&](int ch, int sb, bool is_intensity) {
         const int al = bitstream.read_bits((*quantization_info.nbal)[sb]);
-        data.allocations[0][sb]  = bitstream.read_bits((*quantization_info.nbal)[sb]);
-        data.allocations[1][sb] = data.allocations[0][sb];
-    }
+        data.allocations[ch][sb] = (*quantization_info.table)[sb][al];
+        if (is_intensity) data.allocations[1][sb] = data.allocations[0][sb];
+    });
 
-    for (size_t sb = 0; sb < sblimit; sb++) {
-        for (size_t ch = 0; ch < channels; ch++) {
-            if (data.allocations[ch][sb] != 0) {
-                data.scfsi[ch][sb] = bitstream.read_bits(2);
-            }
-        }
-    }
+    loop_over_sb_and_ch(channels, sblimit, sblimit, [&](int ch, int sb, bool is_intensity) {
+        if (data.allocations[ch][sb] == 0) return;
+        data.scfsi[ch][sb] = bitstream.read_bits(2);
+    });
 
-    for (size_t sb = 0; sb < sblimit; sb++) {
-        for (size_t ch = 0; ch < channels; ch++) {
-            if (data.allocations[ch][sb] != 0) {
-                switch (data.scfsi[ch][sb]) {
-                case 0:
-                    data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
-                    data.scale_factors[ch][sb][1] = table_scale_factors[bitstream.read_bits(6)];
-                    data.scale_factors[ch][sb][2] = table_scale_factors[bitstream.read_bits(6)];
-                    break;
-                case 2:
-                    data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
-                    data.scale_factors[ch][sb][1] = data.scale_factors[ch][sb][0];
-                    data.scale_factors[ch][sb][2] = data.scale_factors[ch][sb][0];
-                    break;
-                case 1:
-                    data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
-                    data.scale_factors[ch][sb][1] = data.scale_factors[ch][sb][0];
-                    data.scale_factors[ch][sb][2] = table_scale_factors[bitstream.read_bits(6)];
-                    break;
-                case 3:
-                    data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
-                    data.scale_factors[ch][sb][1] = table_scale_factors[bitstream.read_bits(6)];
-                    data.scale_factors[ch][sb][2] = data.scale_factors[ch][sb][1];
-                    break;
-                }
-            }
+    loop_over_sb_and_ch(channels, sblimit, sblimit, [&](int ch, int sb, bool is_intensity) {
+        if (data.allocations[ch][sb] == 0) return;
+        switch (data.scfsi[ch][sb]) {
+        case 0:
+            data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
+            data.scale_factors[ch][sb][1] = table_scale_factors[bitstream.read_bits(6)];
+            data.scale_factors[ch][sb][2] = table_scale_factors[bitstream.read_bits(6)];
+            break;
+        case 2:
+            data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
+            data.scale_factors[ch][sb][1] = data.scale_factors[ch][sb][0];
+            data.scale_factors[ch][sb][2] = data.scale_factors[ch][sb][0];
+            break;
+        case 1:
+            data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
+            data.scale_factors[ch][sb][1] = data.scale_factors[ch][sb][0];
+            data.scale_factors[ch][sb][2] = table_scale_factors[bitstream.read_bits(6)];
+            break;
+        case 3:
+            data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
+            data.scale_factors[ch][sb][1] = table_scale_factors[bitstream.read_bits(6)];
+            data.scale_factors[ch][sb][2] = data.scale_factors[ch][sb][1];
+            break;
         }
-    }
+    });
 
     // TODO: Theres probably a smarter way to do this
     auto quantization_class_index = [](int value) -> int {
@@ -220,75 +219,42 @@ AudioDataII read_audio_data_II(const Header& header, BitStream& bitstream) {
     };
 
     for (size_t gr = 0; gr < 12; gr++) {
-        for (size_t sb = 0; sb < bound; sb++) {
-            for (size_t ch = 0; ch < channels; ch++) {
-                if (data.allocations[ch][sb] != 0) {
-                    const int quant_index = quantization_class_index(data.allocations[ch][sb]);
-                    const int code_width = layer_II_quantization_class_bits_per_cw[quant_index];
+        loop_over_sb_and_ch(channels, bound, sblimit, [&](int ch, int sb, bool is_intensity) {
+            if (data.allocations[ch][sb] == 0) return;
 
-                    if (layer_II_quantization_class_group[quant_index]) {
-                        const int nlevels = data.allocations[ch][sb];
-                        const size_t sample_code_highest_bit_index = left_most_bit_index(nlevels);
+            const int quant_index = quantization_class_index(data.allocations[ch][sb]);
+            const int code_width = layer_II_quantization_class_bits_per_cw[quant_index];
 
-                        int sample_code = bitstream.read_bits(code_width);
+            if (layer_II_quantization_class_group[quant_index]) {
+                const int nlevels = data.allocations[ch][sb];
+                const size_t sample_code_highest_bit_index = left_most_bit_index(nlevels);
 
-                        for (size_t i = 0; i < 3; i++) {
-                            data.samples[ch][sb][3 * gr + i] = sample_code % nlevels;
-                            sample_code = sample_code / nlevels;
+                int sample_code = bitstream.read_bits(code_width);
 
-                            const float scale_factor = data.scale_factors[ch][sb][gr / 4];
-                            const int sample = data.samples[ch][sb][3 * gr + i];
-                            const float requantized = requantize_II(sample, sample_code_highest_bit_index, quant_index);
+                for (size_t i = 0; i < 3; i++) {
+                    data.samples[ch][sb][3 * gr + i] = sample_code % nlevels;
+                    sample_code = sample_code / nlevels;
 
-                            data.requantized_samples[ch][sb][3 * gr + i] = scale_factor * requantized;
-                        }
-                    } else {
-                        for (size_t s = 0; s < 3; s++) {
-                            data.samples[ch][sb][3 * gr + s] = bitstream.read_bits(code_width);
+                    const float scale_factor = data.scale_factors[ch][sb][gr / 4];
+                    const int sample = data.samples[ch][sb][3 * gr + i];
+                    const float requantized = requantize_II(sample, sample_code_highest_bit_index, quant_index);
 
-                            const float scale_factor = data.scale_factors[ch][sb][gr / 4];
-                            const int sample = data.samples[ch][sb][3 * gr + s];
-                            const float requantized = requantize_II(sample, code_width, quant_index);
+                    data.requantized_samples[ch][sb][3 * gr + i] = scale_factor * requantized;
+                    if (is_intensity) data.requantized_samples[1][sb][3 * gr + i] = data.requantized_samples[0][sb][3 * gr + i];
+                }
+            } else {
+                for (size_t s = 0; s < 3; s++) {
+                    data.samples[ch][sb][3 * gr + s] = bitstream.read_bits(code_width);
 
-                            data.requantized_samples[ch][sb][3 * gr + s] = scale_factor * requantized;
-                        }
-                    }
+                    const float scale_factor = data.scale_factors[ch][sb][gr / 4];
+                    const int sample = data.samples[ch][sb][3 * gr + s];
+                    const float requantized = requantize_II(sample, code_width, quant_index);
+
+                    data.requantized_samples[ch][sb][3 * gr + s] = scale_factor * requantized;
+                    if (is_intensity) data.requantized_samples[1][sb][3 * gr + s] = data.requantized_samples[0][sb][3 * gr + s];
                 }
             }
-        }
-        for (size_t sb = bound; sb < sblimit; sb++) {
-            if (data.allocations[0][sb] != 0) {
-                const int quant_index = quantization_class_index(data.allocations[0][sb]);
-                const int code_width = layer_II_quantization_class_bits_per_cw[quant_index];
-
-                if (layer_II_quantization_class_group[quant_index]) {
-                    const int nlevels = data.allocations[0][sb];
-                    const size_t sample_code_highest_bit_index = left_most_bit_index(nlevels);
-                    int sample_code = bitstream.read_bits(code_width);
-
-                    for (size_t i = 0; i < 3; i++) {
-                        data.samples[0][sb][3 * gr + i] = sample_code % nlevels;
-                        sample_code = sample_code / nlevels;
-
-                        const float scale_factor = data.scale_factors[0][sb][gr / 4];
-                        const int sample = data.samples[0][sb][3 * gr + i];
-                        const float requantized = requantize_II(sample, sample_code_highest_bit_index, quant_index);
-
-                        data.requantized_samples[0][sb][3 * gr + i] = scale_factor * requantized;
-                    }
-                } else {
-                    for (size_t s = 0; s < 3; s++) {
-                        data.samples[0][sb][3 * gr + s] = bitstream.read_bits(code_width);
-
-                        const float scale_factor = data.scale_factors[0][sb][gr / 4];
-                        const int sample = data.samples[0][sb][3 * gr + s];
-                        const float requantized = requantize_II(sample, code_width, quant_index);
-
-                        data.requantized_samples[0][sb][3 * gr + s] = scale_factor * requantized;
-                    }
-                }
-            }
-        }
+        });
     }
 
     return data;
@@ -300,45 +266,25 @@ AudioDataI read_audio_data_I(const Header& header, BitStream& bitstream) {
     const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
     const int bound = header.mode == Mode::IntensityStereo ? table_bounds[header.mode_extension] : 32;
 
-    for (size_t sb = 0; sb < bound; sb++) {
-        for (size_t ch = 0; ch < channels; ch++) {
-            data.allocations[ch][sb] = table_allocation[bitstream.read_bits(4)];
-        }
-    }
+    loop_over_sb_and_ch(channels, bound, 32, [&](int ch, int sb, bool is_intensity) {
+        data.allocations[ch][sb] = table_allocation[bitstream.read_bits(4)];
+        if (is_intensity) data.allocations[1][sb] = data.allocations[0][sb];
+    });
 
-    for (size_t sb = bound; sb < 32; sb++) {
-        data.allocations[0][sb] = bitstream.read_bits(4);
-        data.allocations[1][sb] = data.allocations[0][sb];
-    }
-
-    for (size_t sb = 0; sb < 32; sb++) {
-        for (size_t ch = 0; ch < channels; ch++) {
-            if (data.allocations[ch][sb] != 0) {
-                data.scale_factors[ch][sb] = bitstream.read_bits(6);
-            }
-        }
-    }
+    loop_over_sb_and_ch(channels, 32, 32, [&](int ch, int sb, bool is_intensity) {
+        if (data.allocations[ch][sb] == 0) return;
+        data.scale_factors[ch][sb] = bitstream.read_bits(6);
+    });
 
     for (size_t s = 0; s < 12; s++) {
-        for (size_t sb = 0; sb < bound; sb++) {
-            for (size_t ch = 0; ch < channels; ch++) {
-                if (data.allocations[ch][sb] != 0) {
-                    const int num_bits = data.allocations[ch][sb];
-                    const float scale_factor = table_scale_factors[data.scale_factors[ch][sb]];
-                    data.samples[ch][sb][s] = bitstream.read_bits(num_bits);
-                    data.requantized_samples[ch][sb][s] = scale_factor * requantize_I(data.samples[ch][sb][s], num_bits);
-                }
-            }
-        }
-
-        for (size_t sb = bound; sb < 32; sb++) {
-            if (data.allocations[0][sb] != 0) {
-                const int num_bits = data.allocations[0][sb];
-                const float scale_factor = table_scale_factors[data.scale_factors[0][sb]];
-                data.samples[0][sb][s] = bitstream.read_bits(num_bits);
-                data.requantized_samples[0][sb][s] = scale_factor * requantize_I(data.samples[0][sb][s], num_bits);
-            }
-        }
+        loop_over_sb_and_ch(channels, bound, 32, [&](int ch, int sb, bool is_intensity) {
+            if (data.allocations[ch][sb] == 0) return;
+            const int num_bits = data.allocations[ch][sb];
+            const float scale_factor = table_scale_factors[data.scale_factors[ch][sb]];
+            data.samples[ch][sb][s] = bitstream.read_bits(num_bits);
+            data.requantized_samples[ch][sb][s] = scale_factor * requantize_I(data.samples[ch][sb][s], num_bits);
+            if (is_intensity) data.requantized_samples[1][sb][s] = data.requantized_samples[0][sb][s];
+        });
     }
 
     return data;
