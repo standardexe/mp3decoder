@@ -822,6 +822,11 @@ int layer_II_quantization_class_bits_per_cw[] = {
 int layer_III_scalefac_compress_slen1[] = { 0, 0, 0, 0, 3, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4 };
 int layer_III_scalefac_compress_slen2[] = { 0, 1, 2, 3, 0, 1, 2, 3, 1, 2, 3, 1, 2, 3, 2, 3 };
 
+// ISO/IEC 11172-3 (Table B.6)
+std::array<int, 22> layer_III_pretab = {{
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 3, 2, 0
+}};
+
 // TODO: this can be more elegant. Like only use the start or smth.
 struct ScaleFactorBand {
 	int width;
@@ -829,7 +834,7 @@ struct ScaleFactorBand {
 	int end;
 };
 
-std::map< int, std::array<ScaleFactorBand, 12> > ScaleFactorBandsShort = {
+std::map< int, std::array<ScaleFactorBand, 13> > ScaleFactorBandsShort = {
 	{
 		32000,
 		{{
@@ -844,7 +849,8 @@ std::map< int, std::array<ScaleFactorBand, 12> > ScaleFactorBandsShort = {
 			{20, 58, 77},
 			{26, 78, 103},
 			{34, 104, 137},
-			{42, 138, 179}
+			{42, 138, 179},
+			{12, 180, 191}
 		}}
 	},
 	{
@@ -861,7 +867,8 @@ std::map< int, std::array<ScaleFactorBand, 12> > ScaleFactorBandsShort = {
 			{14, 52, 65},
 			{18, 66, 83},
 			{22, 84, 105},
-			{30, 106, 135}
+			{30, 106, 135},
+			{56, 136, 191}
 		}}
 	},
 	{
@@ -878,7 +885,8 @@ std::map< int, std::array<ScaleFactorBand, 12> > ScaleFactorBandsShort = {
 			{14, 50, 63},
 			{16, 64, 79},
 			{20, 80, 99},
-			{26, 100, 125}
+			{26, 100, 125},
+			{66, 126, 191}
 		}}
 	}
 };
@@ -908,7 +916,7 @@ std::map< int, std::array<ScaleFactorBand, 22> > ScaleFactorBandsLong = {
 			{68, 296, 363},
 			{84, 364, 447},
 			{102, 448, 549},
-			{0, 576, 576}
+			{25, 550, 575}
 		}}
 	},
 	{
@@ -935,7 +943,7 @@ std::map< int, std::array<ScaleFactorBand, 22> > ScaleFactorBandsLong = {
 			{50, 238, 287},
 			{54, 288, 341},
 			{76, 342, 417},
-			{0, 576, 576}
+			{158, 418, 575}
 		}}
 	},
 	{
@@ -962,7 +970,7 @@ std::map< int, std::array<ScaleFactorBand, 22> > ScaleFactorBandsLong = {
 			{46, 230, 275},
 			{54, 276, 329},
 			{54, 330, 383},
-			{0, 576, 576}
+			{192, 384, 575}
 		}}
 	}
 };
@@ -2578,3 +2586,193 @@ std::array<HuffmanTable2, 32> HuffmanTables2 = {{
 	{ huffman_table_30, SIZE_HUFFMAN_TABLE_30, LINBITS_HUFFMAN_TABLE_30 },
 	{ huffman_table_31, SIZE_HUFFMAN_TABLE_31, LINBITS_HUFFMAN_TABLE_31 },
 }};
+
+double layer_III_alias_reduction_coeffs[8] = {
+	-0.6,
+	-0.535,
+	-0.33,
+	-0.185,
+	-0.095,
+	-0.041,
+	-0.0142,
+	-0.0032
+};
+
+double layer_III_cs[8] = {
+	0.857492925712f,
+	0.881741997318f,
+	0.949628649103f,
+	0.983314592492f,
+	0.995517816065f,
+	0.999160558175f,
+	0.999899195243f,
+	0.999993155067f
+};
+
+double layer_III_ca[8] = {
+	-0.5144957554270f,
+	-0.4717319685650f,
+	-0.3133774542040f,
+	-0.1819131996110f,
+	-0.0945741925262f,
+	-0.0409655828852f,
+	-0.0141985685725f,
+	-0.00369997467375f
+};
+
+double layer_III_window_0[36] = {
+	sin(M_PI / 36 * (0 + 0.5)),
+	sin(M_PI / 36 * (1 + 0.5)),
+	sin(M_PI / 36 * (2 + 0.5)),
+	sin(M_PI / 36 * (3 + 0.5)),
+	sin(M_PI / 36 * (4 + 0.5)),
+	sin(M_PI / 36 * (5 + 0.5)),
+	sin(M_PI / 36 * (6 + 0.5)),
+	sin(M_PI / 36 * (7 + 0.5)),
+	sin(M_PI / 36 * (8 + 0.5)),
+	sin(M_PI / 36 * (9 + 0.5)),
+	sin(M_PI / 36 * (10 + 0.5)),
+	sin(M_PI / 36 * (11 + 0.5)),
+	sin(M_PI / 36 * (12 + 0.5)),
+	sin(M_PI / 36 * (13 + 0.5)),
+	sin(M_PI / 36 * (14 + 0.5)),
+	sin(M_PI / 36 * (15 + 0.5)),
+	sin(M_PI / 36 * (16 + 0.5)),
+	sin(M_PI / 36 * (17 + 0.5)),
+	sin(M_PI / 36 * (18 + 0.5)),
+	sin(M_PI / 36 * (19 + 0.5)),
+	sin(M_PI / 36 * (20 + 0.5)),
+	sin(M_PI / 36 * (21 + 0.5)),
+	sin(M_PI / 36 * (22 + 0.5)),
+	sin(M_PI / 36 * (23 + 0.5)),
+	sin(M_PI / 36 * (24 + 0.5)),
+	sin(M_PI / 36 * (25 + 0.5)),
+	sin(M_PI / 36 * (26 + 0.5)),
+	sin(M_PI / 36 * (27 + 0.5)),
+	sin(M_PI / 36 * (28 + 0.5)),
+	sin(M_PI / 36 * (29 + 0.5)),
+	sin(M_PI / 36 * (30 + 0.5)),
+	sin(M_PI / 36 * (31 + 0.5)),
+	sin(M_PI / 36 * (32 + 0.5)),
+	sin(M_PI / 36 * (33 + 0.5)),
+	sin(M_PI / 36 * (34 + 0.5)),
+	sin(M_PI / 36 * (35 + 0.5)),
+};
+
+double layer_III_window_1[36] = {
+	sin(M_PI / 36 * (0 + 0.5)),
+	sin(M_PI / 36 * (1 + 0.5)),
+	sin(M_PI / 36 * (2 + 0.5)),
+	sin(M_PI / 36 * (3 + 0.5)),
+	sin(M_PI / 36 * (4 + 0.5)),
+	sin(M_PI / 36 * (5 + 0.5)),
+	sin(M_PI / 36 * (6 + 0.5)),
+	sin(M_PI / 36 * (7 + 0.5)),
+	sin(M_PI / 36 * (8 + 0.5)),
+	sin(M_PI / 36 * (9 + 0.5)),
+	sin(M_PI / 36 * (10 + 0.5)),
+	sin(M_PI / 36 * (11 + 0.5)),
+	sin(M_PI / 36 * (12 + 0.5)),
+	sin(M_PI / 36 * (13 + 0.5)),
+	sin(M_PI / 36 * (14 + 0.5)),
+	sin(M_PI / 36 * (15 + 0.5)),
+	sin(M_PI / 36 * (16 + 0.5)),
+	sin(M_PI / 36 * (17 + 0.5)),
+	1,
+	1,
+	1,
+	1,
+	1,
+	1,
+	sin(M_PI / 12 * (24 - 18 + 0.5)),
+	sin(M_PI / 12 * (25 - 18 + 0.5)),
+	sin(M_PI / 12 * (26 - 18 + 0.5)),
+	sin(M_PI / 12 * (27 - 18 + 0.5)),
+	sin(M_PI / 12 * (28 - 18 + 0.5)),
+	sin(M_PI / 12 * (29 - 18 + 0.5)),
+	0,
+	0,
+	0,
+	0,
+	0,
+	0
+};
+
+double layer_III_window_2[36] = {
+	sin(M_PI / 12 * (0 + 0.5)),
+	sin(M_PI / 12 * (1 + 0.5)),
+	sin(M_PI / 12 * (2 + 0.5)),
+	sin(M_PI / 12 * (3 + 0.5)),
+	sin(M_PI / 12 * (4 + 0.5)),
+	sin(M_PI / 12 * (5 + 0.5)),
+	sin(M_PI / 12 * (6 + 0.5)),
+	sin(M_PI / 12 * (7 + 0.5)),
+	sin(M_PI / 12 * (8 + 0.5)),
+	sin(M_PI / 12 * (9 + 0.5)),
+	sin(M_PI / 12 * (10 + 0.5)),
+	sin(M_PI / 12 * (11 + 0.5)),
+	
+	sin(M_PI / 12 * (0 + 0.5)),
+	sin(M_PI / 12 * (1 + 0.5)),
+	sin(M_PI / 12 * (2 + 0.5)),
+	sin(M_PI / 12 * (3 + 0.5)),
+	sin(M_PI / 12 * (4 + 0.5)),
+	sin(M_PI / 12 * (5 + 0.5)),
+	sin(M_PI / 12 * (6 + 0.5)),
+	sin(M_PI / 12 * (7 + 0.5)),
+	sin(M_PI / 12 * (8 + 0.5)),
+	sin(M_PI / 12 * (9 + 0.5)),
+	sin(M_PI / 12 * (10 + 0.5)),
+	sin(M_PI / 12 * (11 + 0.5)),
+
+	sin(M_PI / 12 * (0 + 0.5)),
+	sin(M_PI / 12 * (1 + 0.5)),
+	sin(M_PI / 12 * (2 + 0.5)),
+	sin(M_PI / 12 * (3 + 0.5)),
+	sin(M_PI / 12 * (4 + 0.5)),
+	sin(M_PI / 12 * (5 + 0.5)),
+	sin(M_PI / 12 * (6 + 0.5)),
+	sin(M_PI / 12 * (7 + 0.5)),
+	sin(M_PI / 12 * (8 + 0.5)),
+	sin(M_PI / 12 * (9 + 0.5)),
+	sin(M_PI / 12 * (10 + 0.5)),
+	sin(M_PI / 12 * (11 + 0.5)),
+};
+
+double layer_III_window_3[36] = {
+	0,
+	0,
+	0,
+	0,
+	0,
+	sin(M_PI / 12 * (6 - 6 + 0.5)),
+	sin(M_PI / 12 * (7 - 6 + 0.5)),
+	sin(M_PI / 12 * (8 - 6 + 0.5)),
+	sin(M_PI / 12 * (9 - 6 + 0.5)),
+	sin(M_PI / 12 * (10 - 6 + 0.5)),
+	sin(M_PI / 12 * (11 - 6 + 0.5)),
+	1,
+	1,
+	1,
+	1,
+	1,
+	1,
+	sin(M_PI / 36 * (18 + 0.5)),
+	sin(M_PI / 36 * (19 + 0.5)),
+	sin(M_PI / 36 * (20 + 0.5)),
+	sin(M_PI / 36 * (21 + 0.5)),
+	sin(M_PI / 36 * (22 + 0.5)),
+	sin(M_PI / 36 * (23 + 0.5)),
+	sin(M_PI / 36 * (24 + 0.5)),
+	sin(M_PI / 36 * (25 + 0.5)),
+	sin(M_PI / 36 * (26 + 0.5)),
+	sin(M_PI / 36 * (27 + 0.5)),
+	sin(M_PI / 36 * (28 + 0.5)),
+	sin(M_PI / 36 * (29 + 0.5)),
+	sin(M_PI / 36 * (30 + 0.5)),
+	sin(M_PI / 36 * (31 + 0.5)),
+	sin(M_PI / 36 * (32 + 0.5)),
+	sin(M_PI / 36 * (33 + 0.5)),
+	sin(M_PI / 36 * (34 + 0.5)),
+	sin(M_PI / 36 * (35 + 0.5))
+};
