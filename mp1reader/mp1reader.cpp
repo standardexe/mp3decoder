@@ -338,7 +338,7 @@ void imdct_III(double input[18], double output[36], int block_type) {
         for (size_t i = 0; i < n; i++) {
             temp[i+0] = 0;
             for (size_t k = 0; k < n / 2; k++) {
-                temp[i+0] += input[k+0] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
+                temp[i+0] += input[3*k+0] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
             }
 			temp[i+0] *= layer_III_window_2[i];
         }
@@ -346,7 +346,7 @@ void imdct_III(double input[18], double output[36], int block_type) {
         for (size_t i = 0; i < n; i++) {
             temp[i+12] = 0;
             for (size_t k = 0; k < n / 2; k++) {
-                temp[i+12] += input[k+12] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
+                temp[i+12] += input[3*k+1] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
             }
 			temp[i+12] *= layer_III_window_2[i];
         }
@@ -354,7 +354,7 @@ void imdct_III(double input[18], double output[36], int block_type) {
         for (size_t i = 0; i < n; i++) {
             temp[i+24] = 0;
             for (size_t k = 0; k < n / 2; k++) {
-                temp[i+24] += input[k+24] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
+                temp[i+24] += input[3*k+2] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
             }
 			temp[i+24] *= layer_III_window_2[i];
         }
@@ -664,6 +664,8 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
 
     read_side_info_III(header, si, bitstream);
 
+    std::cout << "Gr0 bt " << si.block_type[0][0] << ", Gr1 bt " << si.block_type[1][0] << std::endl;
+
     // Copy all the remaining data in this frame into the bit reservoir.
     // Append it to the left-over data of the last frame in order to build the
     // complete current frame.
@@ -889,7 +891,7 @@ int main()
     char* content;
     size_t content_length;
     {
-        std::ifstream infile(R"(..\res\dolby.mp3)", std::ios::binary);
+        std::ifstream infile(R"(..\res\chirp.mp3)", std::ios::binary);
         infile.seekg(0, std::ios::end);
         content_length = infile.tellg();
         infile.seekg(0, std::ios::beg);
@@ -965,7 +967,7 @@ int main()
 					write_samples();
                 }
             }
-			for (size_t gr = 1; gr < 2; gr++) {
+			for (size_t gr = 0; gr < 2; gr++) {
                 //f << "Granule " << gr << "\n";
 				for (size_t i = 0; i < 18; i++) {
                     for (size_t j = 0; j < 32; j++) {
