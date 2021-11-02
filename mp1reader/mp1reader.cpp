@@ -240,7 +240,7 @@ void exponents_III(
 		}
     };
 
-    int scalefac_multiplier = scalefac_scale ? 1 : 0.5;
+    double scalefac_multiplier = scalefac_scale ? 1 : 0.5;
     int gain = global_gain - 210;
 
     if (block_type != 2) {
@@ -891,7 +891,7 @@ int main()
     char* content;
     size_t content_length;
     {
-        std::ifstream infile(R"(..\res\chirp.mp3)", std::ios::binary);
+        std::ifstream infile(R"(..\res\chirp_end.mp3)", std::ios::binary);
         infile.seekg(0, std::ios::end);
         content_length = infile.tellg();
         infile.seekg(0, std::ios::beg);
