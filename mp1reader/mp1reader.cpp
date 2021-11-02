@@ -235,9 +235,9 @@ void exponents_III(
     double exp[576]) {
     
     auto fill_band = [exp](double exponent, int start, int end) {
-		for (int j = start; j <= end && j < 576; j++) {
-			exp[j] = exponent;
-		}
+        for (int j = start; j <= end && j < 576; j++) {
+            exp[j] = exponent;
+        }
     };
 
     double scalefac_multiplier = scalefac_scale ? 1 : 0.5;
@@ -256,7 +256,7 @@ void exponents_III(
             // TODO: need mixed mode short scale factor band lists
             while (l < 36) {
                 int exponent = gain - (scalefac_multiplier * (scalefac_l[sfbi] + has_preflag * layer_III_pretab[sfbi]));
-				fill_band(pow(2, exponent), sfb[sfbi].start, sfb[sfbi].end);
+                fill_band(pow(2, exponent), sfb[sfbi].start, sfb[sfbi].end);
                 l += sfb[sfbi++].width;
             }
         }
@@ -268,13 +268,13 @@ void exponents_III(
         // TODO: check if sfbi < 13 is correct. libmad has bigger sfb tables (39 indices) to get around this.
         //       Don't know where they got their additional values from.
         while (l < 576 && sfbi < 13) {
-			double exponent0 = gain0 - (scalefac_multiplier * scalefac_s[sfbi][0]);
-			double exponent1 = gain1 - (scalefac_multiplier * scalefac_s[sfbi][1]);
-			double exponent2 = gain2 - (scalefac_multiplier * scalefac_s[sfbi][2]);
+            double exponent0 = gain0 - (scalefac_multiplier * scalefac_s[sfbi][0]);
+            double exponent1 = gain1 - (scalefac_multiplier * scalefac_s[sfbi][1]);
+            double exponent2 = gain2 - (scalefac_multiplier * scalefac_s[sfbi][2]);
 
-			fill_band(pow(2, exponent0), sfb[sfbi].start * 3 + 0 * sfb[sfbi].width, sfb[sfbi].start * 3 + 1 * sfb[sfbi].width);
-			fill_band(pow(2, exponent1), sfb[sfbi].start * 3 + 1 * sfb[sfbi].width, sfb[sfbi].start * 3 + 2 * sfb[sfbi].width);
-			fill_band(pow(2, exponent2), sfb[sfbi].start * 3 + 2 * sfb[sfbi].width, sfb[sfbi].start * 3 + 3 * sfb[sfbi].width);
+            fill_band(pow(2, exponent0), sfb[sfbi].start * 3 + 0 * sfb[sfbi].width, sfb[sfbi].start * 3 + 1 * sfb[sfbi].width);
+            fill_band(pow(2, exponent1), sfb[sfbi].start * 3 + 1 * sfb[sfbi].width, sfb[sfbi].start * 3 + 2 * sfb[sfbi].width);
+            fill_band(pow(2, exponent2), sfb[sfbi].start * 3 + 2 * sfb[sfbi].width, sfb[sfbi].start * 3 + 3 * sfb[sfbi].width);
  
             l += 3 * sfb[sfbi].width;
             sfbi++;
@@ -287,30 +287,30 @@ void exponents_III(
 }
 
 void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
-	size_t sfbi = 0;
-	size_t l = 0;
+    size_t sfbi = 0;
+    size_t l = 0;
     double tmp[576] = {};
 
-	if (mixed_mode) {
-		// TODO: need mixed mode short scale factor band lists
-		while (l < 36) {
+    if (mixed_mode) {
+        // TODO: need mixed mode short scale factor band lists
+        while (l < 36) {
             for (int i = 0; i < sfb[sfbi].width; i++) {
                 tmp[l] = samples[l];
             }
-			l += sfb[sfbi++].width;
-		}
-	}
+            l += sfb[sfbi++].width;
+        }
+    }
 
-	// TODO: check if sfbi < 12 is correct. libmad has bigger sfb tables (39 indices) to get around this.
-	//       Don't know where they got their additional values from.
-	while (l < 576 && sfbi < 13) {
+    // TODO: check if sfbi < 12 is correct. libmad has bigger sfb tables (39 indices) to get around this.
+    //       Don't know where they got their additional values from.
+    while (l < 576 && sfbi < 13) {
         for (int i = 0; i < sfb[sfbi].width; i++) {
             tmp[l++] = samples[3 * sfb[sfbi].start + 0 * sfb[sfbi].width + i];
             tmp[l++] = samples[3 * sfb[sfbi].start + 1 * sfb[sfbi].width + i];
             tmp[l++] = samples[3 * sfb[sfbi].start + 2 * sfb[sfbi].width + i];
         }
-		sfbi++;
-	}
+        sfbi++;
+    }
 
     memcpy(samples, tmp, 576 * sizeof(double));
 }
@@ -324,7 +324,7 @@ void alias_reduce_III(AudioDataIII& data) {
                 double d1 = data.requantized_samples[gr][idx1];
                 double d2 = data.requantized_samples[gr][idx2];
                 data.requantized_samples[gr][idx1] = d1 * layer_III_cs[i] - d2 * layer_III_ca[i];
-				data.requantized_samples[gr][idx2] = d2 * layer_III_cs[i] + d1 * layer_III_ca[i];
+                data.requantized_samples[gr][idx2] = d2 * layer_III_cs[i] + d1 * layer_III_ca[i];
             }
         }
     }
@@ -332,7 +332,7 @@ void alias_reduce_III(AudioDataIII& data) {
 
 void imdct_III(double input[18], double output[36], int block_type) {
     if (block_type == 2) {
-		const int n = 12;
+        const int n = 12;
         double temp[36];
 
         for (size_t i = 0; i < n; i++) {
@@ -340,7 +340,7 @@ void imdct_III(double input[18], double output[36], int block_type) {
             for (size_t k = 0; k < n / 2; k++) {
                 temp[i+0] += input[3*k+0] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
             }
-			temp[i+0] *= layer_III_window_2[i];
+            temp[i+0] *= layer_III_window_2[i];
         }
 
         for (size_t i = 0; i < n; i++) {
@@ -348,7 +348,7 @@ void imdct_III(double input[18], double output[36], int block_type) {
             for (size_t k = 0; k < n / 2; k++) {
                 temp[i+12] += input[3*k+1] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
             }
-			temp[i+12] *= layer_III_window_2[i];
+            temp[i+12] *= layer_III_window_2[i];
         }
 
         for (size_t i = 0; i < n; i++) {
@@ -356,7 +356,7 @@ void imdct_III(double input[18], double output[36], int block_type) {
             for (size_t k = 0; k < n / 2; k++) {
                 temp[i+24] += input[3*k+2] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
             }
-			temp[i+24] *= layer_III_window_2[i];
+            temp[i+24] *= layer_III_window_2[i];
         }
 
         double* idmct1 = &temp[0];
@@ -370,7 +370,7 @@ void imdct_III(double input[18], double output[36], int block_type) {
         for (size_t i = 30; i < 36; i++) output[i] = 0;
 
     } else {
-		const int n = 36;
+        const int n = 36;
         for (size_t i = 0; i < n; i++) {
             output[i] = 0;
             for (size_t k = 0; k < n / 2; k++) {
@@ -461,59 +461,59 @@ void read_side_info_III(const Header& header, layer_III_sideinfo& si, BitStream&
 }
 
 void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBitStream& reservoir, int gr, int ch) {
-	if (si.window_switching_flag[gr][ch] == 1 && si.block_type[gr][ch] == 2) {
-		if (si.mixed_block_flag[gr][ch]) {
-			for (size_t sfb = 0; sfb < 8; sfb++) {
-				const int bits = layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]];
-				si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
-			}
-			for (size_t sfb = 3; sfb < 12; sfb++) {
-				for (size_t window = 0; window < 3; window++) {
-					const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
-												layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
-					si.scalefac_s[gr][ch][sfb][window] = reservoir.read_bits(bits);
-				}
-			}
-		} else {
-			for (size_t sfb = 0; sfb < 12; sfb++) {
-				for (size_t window = 0; window < 3; window++) {
-					const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
-												layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
-					si.scalefac_s[gr][ch][sfb][window] = reservoir.read_bits(bits);
-				}
-			}
-		}
-	} else {
-		auto scalefactor_bits = [&gr, &ch, &si](int sfb) -> int {
-			return sfb <= 10 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]]
-							 : layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
-		};
+    if (si.window_switching_flag[gr][ch] == 1 && si.block_type[gr][ch] == 2) {
+        if (si.mixed_block_flag[gr][ch]) {
+            for (size_t sfb = 0; sfb < 8; sfb++) {
+                const int bits = layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]];
+                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+            }
+            for (size_t sfb = 3; sfb < 12; sfb++) {
+                for (size_t window = 0; window < 3; window++) {
+                    const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
+                                                layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
+                    si.scalefac_s[gr][ch][sfb][window] = reservoir.read_bits(bits);
+                }
+            }
+        } else {
+            for (size_t sfb = 0; sfb < 12; sfb++) {
+                for (size_t window = 0; window < 3; window++) {
+                    const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
+                                                layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
+                    si.scalefac_s[gr][ch][sfb][window] = reservoir.read_bits(bits);
+                }
+            }
+        }
+    } else {
+        auto scalefactor_bits = [&gr, &ch, &si](int sfb) -> int {
+            return sfb <= 10 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]]
+                             : layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
+        };
 
-		if ((si.scfsi[ch][0] == 0) || (gr == 0)) {
-			for (size_t sfb = 0; sfb < 6; sfb++) {
-				const int bits = scalefactor_bits(sfb);
-				si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
-			}
-		}
-		if ((si.scfsi[ch][1] == 0) || (gr == 0)) {
-			for (size_t sfb = 6; sfb < 11; sfb++) {
-				const int bits = scalefactor_bits(sfb);
-				si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
-			}
-		}
-		if ((si.scfsi[ch][2] == 0) || (gr == 0)) {
-			for (size_t sfb = 11; sfb < 16; sfb++) {
-				const int bits = scalefactor_bits(sfb);
-				si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
-			}
-		}
-		if ((si.scfsi[ch][3] == 0) || (gr == 0)) {
-			for (size_t sfb = 16; sfb < 21; sfb++) {
-				const int bits = scalefactor_bits(sfb);
-				si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
-			}
-		}
-	}
+        if ((si.scfsi[ch][0] == 0) || (gr == 0)) {
+            for (size_t sfb = 0; sfb < 6; sfb++) {
+                const int bits = scalefactor_bits(sfb);
+                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+            }
+        }
+        if ((si.scfsi[ch][1] == 0) || (gr == 0)) {
+            for (size_t sfb = 6; sfb < 11; sfb++) {
+                const int bits = scalefactor_bits(sfb);
+                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+            }
+        }
+        if ((si.scfsi[ch][2] == 0) || (gr == 0)) {
+            for (size_t sfb = 11; sfb < 16; sfb++) {
+                const int bits = scalefactor_bits(sfb);
+                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+            }
+        }
+        if ((si.scfsi[ch][3] == 0) || (gr == 0)) {
+            for (size_t sfb = 16; sfb < 21; sfb++) {
+                const int bits = scalefactor_bits(sfb);
+                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+            }
+        }
+    }
 }
 
 int read_huffman_data_III(const Header& header,
@@ -523,137 +523,137 @@ int read_huffman_data_III(const Header& header,
                           AudioDataIII& result,
                           int granule_bits_read) {
 
-	double exponents[576] = {};
-	exponents_III(
-		header,
-		si.mixed_block_flag[gr][ch],
-		si.preflag[gr][ch],
-		si.scalefac_scale[gr][ch],
-		si.block_type[gr][ch],
-		si.global_gain[gr][ch],
-		si.sub_block_gain[gr][ch],
-		si.scalefac_l[gr][ch],
-		si.scalefac_s[gr][ch],
-		si.block_type[gr][ch] == 2 ? ScaleFactorBandsShort[header.sampling_frequency].data() :
-									 ScaleFactorBandsLong[header.sampling_frequency].data(),
-		exponents);
+    double exponents[576] = {};
+    exponents_III(
+        header,
+        si.mixed_block_flag[gr][ch],
+        si.preflag[gr][ch],
+        si.scalefac_scale[gr][ch],
+        si.block_type[gr][ch],
+        si.global_gain[gr][ch],
+        si.sub_block_gain[gr][ch],
+        si.scalefac_l[gr][ch],
+        si.scalefac_s[gr][ch],
+        si.block_type[gr][ch] == 2 ? ScaleFactorBandsShort[header.sampling_frequency].data() :
+                                     ScaleFactorBandsLong[header.sampling_frequency].data(),
+        exponents);
 
     int count = 0;
-	int scaleFactorBandIndex1 = si.region0_count[gr][ch] + 1;
-	int scaleFactorBandIndex2 = scaleFactorBandIndex1 + si.region1_count[gr][ch] + 1;
-	if (scaleFactorBandIndex2 >= ScaleFactorBandsLong[header.sampling_frequency].size()) {
-		scaleFactorBandIndex2 = ScaleFactorBandsLong[header.sampling_frequency].size() - 1;
-	}
+    int scaleFactorBandIndex1 = si.region0_count[gr][ch] + 1;
+    int scaleFactorBandIndex2 = scaleFactorBandIndex1 + si.region1_count[gr][ch] + 1;
+    if (scaleFactorBandIndex2 >= ScaleFactorBandsLong[header.sampling_frequency].size()) {
+        scaleFactorBandIndex2 = ScaleFactorBandsLong[header.sampling_frequency].size() - 1;
+    }
 
-	int region1_start = ScaleFactorBandsLong[header.sampling_frequency][scaleFactorBandIndex1].start;
-	int region2_start = ScaleFactorBandsLong[header.sampling_frequency][scaleFactorBandIndex2].start;
-	if (si.window_switching_flag[gr][ch] && si.block_type[gr][ch] == 2) {
-		region1_start = 36;
-		region2_start = 576;
-	}
+    int region1_start = ScaleFactorBandsLong[header.sampling_frequency][scaleFactorBandIndex1].start;
+    int region2_start = ScaleFactorBandsLong[header.sampling_frequency][scaleFactorBandIndex2].start;
+    if (si.window_switching_flag[gr][ch] && si.block_type[gr][ch] == 2) {
+        region1_start = 36;
+        region2_start = 576;
+    }
 
-	const HuffmanTable2* table = nullptr;
-	size_t i = 0;
-	for (; i < si.big_values[gr][ch] * 2; i += 2) {
-		if (i < region1_start) {
-			table = &HuffmanTables2[si.table_select[gr][ch][0]];
-		} else if (i < region2_start) {
-			table = &HuffmanTables2[si.table_select[gr][ch][1]];
-		} else {
-			table = &HuffmanTables2[si.table_select[gr][ch][2]];
-		}
+    const HuffmanTable2* table = nullptr;
+    size_t i = 0;
+    for (; i < si.big_values[gr][ch] * 2; i += 2) {
+        if (i < region1_start) {
+            table = &HuffmanTables2[si.table_select[gr][ch][0]];
+        } else if (i < region2_start) {
+            table = &HuffmanTables2[si.table_select[gr][ch][1]];
+        } else {
+            table = &HuffmanTables2[si.table_select[gr][ch][2]];
+        }
 
-		if (table == nullptr || table->table == nullptr) {
-			std::cout << "UNKNOWN TABLE: " << si.table_select[gr][ch][0] << std::endl;
-			throw std::exception();
-		}
+        if (table == nullptr || table->table == nullptr) {
+            std::cout << "UNKNOWN TABLE: " << si.table_select[gr][ch][0] << std::endl;
+            throw std::exception();
+        }
 
-		const HuffmanEntry2& huff = huffman_decode(reservoir, table->table, table->table_size);
-		int x = huff.x;
-		int y = huff.y;
+        const HuffmanEntry2& huff = huffman_decode(reservoir, table->table, table->table_size);
+        int x = huff.x;
+        int y = huff.y;
         granule_bits_read += huff.hlen;
-		
-		if (x == 15 && table->linbits > 0) {
-			x += reservoir.read_bits(table->linbits);
+        
+        if (x == 15 && table->linbits > 0) {
+            x += reservoir.read_bits(table->linbits);
             granule_bits_read += table->linbits;
-		}
+        }
         if (x != 0) {
             if (reservoir.read_bit()) x = -x;
             granule_bits_read++;
         }
 
-		if (y == 15 && table->linbits > 0) {
-			y += reservoir.read_bits(table->linbits);
+        if (y == 15 && table->linbits > 0) {
+            y += reservoir.read_bits(table->linbits);
             granule_bits_read += table->linbits;
-		}
+        }
         if (y != 0) {
             if (reservoir.read_bit()) y = -y;
             granule_bits_read++;
         }
 
-		result.samples[gr][count+0] = x;
-		result.samples[gr][count+1] = y;
+        result.samples[gr][count+0] = x;
+        result.samples[gr][count+1] = y;
 
-		result.requantized_samples[gr][count + 0] = requantize_III(x, exponents[count + 0]);
-		result.requantized_samples[gr][count + 1] = requantize_III(y, exponents[count + 1]);
+        result.requantized_samples[gr][count + 0] = requantize_III(x, exponents[count + 0]);
+        result.requantized_samples[gr][count + 1] = requantize_III(y, exponents[count + 1]);
 
-		count += 2;
-	}
+        count += 2;
+    }
 
-	const HuffmanEntry4* count1table = si.count1table_select[gr][ch] ? huffman_table_B : huffman_table_A;
+    const HuffmanEntry4* count1table = si.count1table_select[gr][ch] ? huffman_table_B : huffman_table_A;
 
-	// count1 is not known. We have to read huffman encoded values
-	// until we've exhausted the granule's bits. We know the size of
-	// the granule from part2_3_length, which is the number of bits
-	// used for scaleactors and huffman data (in the granule).
-	while (granule_bits_read < si.part2_3_length[gr][ch] && count < 576) {
-		const HuffmanEntry4& entry = huffman_decode(reservoir, count1table, 16);
-		int v = entry.v;
+    // count1 is not known. We have to read huffman encoded values
+    // until we've exhausted the granule's bits. We know the size of
+    // the granule from part2_3_length, which is the number of bits
+    // used for scaleactors and huffman data (in the granule).
+    while (granule_bits_read < si.part2_3_length[gr][ch] && count < 576) {
+        const HuffmanEntry4& entry = huffman_decode(reservoir, count1table, 16);
+        int v = entry.v;
         if (v != 0) {
             if (reservoir.read_bit()) v = -v;
             granule_bits_read++;
         }
-		int w = entry.w;
+        int w = entry.w;
         if (w != 0) {
             if (reservoir.read_bit()) w = -w;
             granule_bits_read++;
         }
-		int x = entry.x;
+        int x = entry.x;
         if (x != 0) {
             if (reservoir.read_bit()) x = -x;
             granule_bits_read++;
         }
-		int y = entry.y;
+        int y = entry.y;
         if (y != 0) {
             if (reservoir.read_bit()) y = -y;
             granule_bits_read++;
         }
 
-		result.samples[gr][count+0] = v;
-		result.samples[gr][count+1] = w;
-		result.samples[gr][count+2] = x;
-		result.samples[gr][count+3] = y;
+        result.samples[gr][count+0] = v;
+        result.samples[gr][count+1] = w;
+        result.samples[gr][count+2] = x;
+        result.samples[gr][count+3] = y;
 
-		result.requantized_samples[gr][count + 0] = requantize_III(v, exponents[count + 0]);
-		result.requantized_samples[gr][count + 1] = requantize_III(w, exponents[count + 1]);
-		result.requantized_samples[gr][count + 2] = requantize_III(x, exponents[count + 2]);
-		result.requantized_samples[gr][count + 3] = requantize_III(y, exponents[count + 3]);
+        result.requantized_samples[gr][count + 0] = requantize_III(v, exponents[count + 0]);
+        result.requantized_samples[gr][count + 1] = requantize_III(w, exponents[count + 1]);
+        result.requantized_samples[gr][count + 2] = requantize_III(x, exponents[count + 2]);
+        result.requantized_samples[gr][count + 3] = requantize_III(y, exponents[count + 3]);
 
-		count += 4;
+        count += 4;
 
         granule_bits_read += entry.hlen;
-	}
+    }
 
-	if (granule_bits_read > si.part2_3_length[gr][ch]) {
-		reservoir.rewind(granule_bits_read - si.part2_3_length[gr][ch]);
-		count--;
-	}
+    if (granule_bits_read > si.part2_3_length[gr][ch]) {
+        reservoir.rewind(granule_bits_read - si.part2_3_length[gr][ch]);
+        count--;
+    }
 
-	if (granule_bits_read < si.part2_3_length[gr][ch]) {
-		for (size_t i = granule_bits_read; i < si.part2_3_length[gr][ch]; i++) {
-			reservoir.read_bit();
-		}
-	}
+    if (granule_bits_read < si.part2_3_length[gr][ch]) {
+        for (size_t i = granule_bits_read; i < si.part2_3_length[gr][ch]; i++) {
+            reservoir.read_bit();
+        }
+    }
 
     return count;
 }
@@ -671,7 +671,7 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
     // complete current frame.
     {
         _ASSERT(bitstream.get_current_bit() == 0);
-		reservoir.seek_to_end();
+        reservoir.seek_to_end();
 
         for (size_t i = (channels == 2 ? 32 : 17) + 4; i < header.frame_size; i++) {
             unsigned char data = bitstream.read_bits<unsigned char>(8);
@@ -687,7 +687,7 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
 
     for (size_t gr = 0; gr < 2; gr++) {
         for (size_t ch = 0; ch < channels; ch++) {
-			const int current_position = reservoir.position();
+            const int current_position = reservoir.position();
             read_scale_factors_III(header, si, reservoir, gr, ch);
             read_huffman_data_III(header, si, reservoir, gr, ch, result, reservoir.position() - current_position);
 
@@ -702,14 +702,14 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
                 imdct_III(&result.requantized_samples[gr][i], output, si.block_type[gr][ch]);
 
                 const int sb = i / 18;
-				for (size_t s = 0; s < 18; s++) {
+                for (size_t s = 0; s < 18; s++) {
                     // overlap add
-					result.output[gr][ch][sb][s] = output[s] + lastValues[ch][sb][s];
-					lastValues[ch][sb][s] = output[s + 18];
+                    result.output[gr][ch][sb][s] = output[s] + lastValues[ch][sb][s];
+                    lastValues[ch][sb][s] = output[s + 18];
 
                     // frequency inversion
                     if (sb % 2 == 1 && s % 2 == 1) result.output[gr][ch][sb][s] *= -1;
-				}
+                }
             }
         }
     }
@@ -961,13 +961,13 @@ int main()
             }
         } else if (header.layer == 3) {
             AudioDataIII audioData = read_audio_data_III(header, bitstream, reservoir, lastValues);
-			for (size_t gr = 0; gr < 2; gr++) {
-				for (size_t i = 0; i < 18; i++) {
-					for (size_t j = 0; j < 32; j++) {
+            for (size_t gr = 0; gr < 2; gr++) {
+                for (size_t i = 0; i < 18; i++) {
+                    for (size_t j = 0; j < 32; j++) {
                         in_samples[j] = 1 * audioData.output[gr][0][j][i];
                     }
-					synthesis(in_samples, out_samples);
-					write_samples();
+                    synthesis(in_samples, out_samples);
+                    write_samples();
                 }
             }
         }
