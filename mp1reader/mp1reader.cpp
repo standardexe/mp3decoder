@@ -673,7 +673,7 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
         _ASSERT(bitstream.get_current_bit() == 0);
 		reservoir.seek_to_end();
 
-        for (size_t i = 17 + 4; i < header.frame_size; i++) {
+        for (size_t i = (channels == 2 ? 32 : 17) + 4; i < header.frame_size; i++) {
             unsigned char data = bitstream.read_bits<unsigned char>(8);
             reservoir.write(&data, 1);
         }
@@ -891,7 +891,7 @@ int main()
     char* content;
     size_t content_length;
     {
-        std::ifstream infile(R"(..\res\chirp_end.mp3)", std::ios::binary);
+        std::ifstream infile(R"(..\res\yellow.mp3)", std::ios::binary);
         infile.seekg(0, std::ios::end);
         content_length = infile.tellg();
         infile.seekg(0, std::ios::beg);
@@ -912,7 +912,7 @@ int main()
 
     auto write_samples = [&out_samples, &outfile, &sample_count]() {
         for (size_t j = 0; j < 32; j++) {
-            const short sample = clamp(32767 * out_samples[j]);
+            const short sample = clamp(32000 * out_samples[j]);
             outfile.write(reinterpret_cast<const char*>(&sample), 2);
         }
         sample_count += 32;
@@ -921,9 +921,6 @@ int main()
 
     RingBitStream reservoir { 65536 };
     double lastValues[2][32][18] = {};
-
-    std::ofstream f;
-    f.open("iii.csv");
 
     while (!bitstream.eof()) {
         if (!synchronize(bitstream)) {
@@ -936,6 +933,12 @@ int main()
 
         Header header = read_header(bitstream);
         std::cout << "Layer " << header.layer << ", " << header.bitrate << ", " << header.padding_bit << ", " << header.protection_bit << ", " << header.frame_size << std::endl;
+
+        if (header.layer != 3) {
+            std::cout << "ERRROR: LOST SYNC!" << std::endl;
+            continue;
+        }
+
         if (header.layer == 1) {
             AudioDataI audioData = read_audio_data_I(header, bitstream);
 
@@ -965,16 +968,6 @@ int main()
                     }
 					synthesis(in_samples, out_samples);
 					write_samples();
-                }
-            }
-			for (size_t gr = 0; gr < 2; gr++) {
-                //f << "Granule " << gr << "\n";
-				for (size_t i = 0; i < 18; i++) {
-                    for (size_t j = 0; j < 32; j++) {
-                        f << audioData.output[gr][0][j][i];
-                        if (i < 31) f << ",";
-                    }
-					f << "\n";
                 }
             }
         }
