@@ -317,7 +317,7 @@ void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
 
 void alias_reduce_III(AudioDataIII& data) {
     for (size_t gr = 0; gr < 2; gr++) {
-        for (size_t sb = 0; sb < 576; sb += 18) {
+        for (size_t sb = 0; sb < 576 - 18; sb += 18) {
             for (size_t i = 0; i < 8; i++) {
                 const int idx1 = sb + 17 - i;
                 const int idx2 = sb + 18 + i;
@@ -889,7 +889,7 @@ int main()
     char* content;
     size_t content_length;
     {
-        std::ifstream infile(R"(..\res\440hz.mp3)", std::ios::binary);
+        std::ifstream infile(R"(..\res\dolby.mp3)", std::ios::binary);
         infile.seekg(0, std::ios::end);
         content_length = infile.tellg();
         infile.seekg(0, std::ios::beg);
