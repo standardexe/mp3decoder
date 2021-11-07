@@ -54,6 +54,10 @@ public:
         }
     }
 
+    bool eos() {
+        return (read_pos == write_pos);
+    }
+
     size_t position() {
         if (read_pos > write_pos) {
             return (read_pos - write_pos) * 8 + current_bit;

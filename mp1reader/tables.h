@@ -891,7 +891,7 @@ std::map< int, std::array<ScaleFactorBand, 13> > ScaleFactorBandsShort = {
     }
 };
 
-std::map< int, std::array<ScaleFactorBand, 22> > ScaleFactorBandsLong = {
+std::map< int, std::array<ScaleFactorBand, 23> > ScaleFactorBandsLong = {
     {
         32000,
         {{
@@ -916,7 +916,8 @@ std::map< int, std::array<ScaleFactorBand, 22> > ScaleFactorBandsLong = {
             {68, 296, 363},
             {84, 364, 447},
             {102, 448, 549},
-            {25, 550, 575}
+            {25, 550, 575},
+            {0, 576, 576},
         }}
     },
     {
@@ -943,7 +944,8 @@ std::map< int, std::array<ScaleFactorBand, 22> > ScaleFactorBandsLong = {
             {50, 238, 287},
             {54, 288, 341},
             {76, 342, 417},
-            {158, 418, 575}
+            {158, 418, 575},
+            {0, 576, 576}
         }}
     },
     {
@@ -970,7 +972,8 @@ std::map< int, std::array<ScaleFactorBand, 22> > ScaleFactorBandsLong = {
             {46, 230, 275},
             {54, 276, 329},
             {54, 330, 383},
-            {192, 384, 575}
+            {192, 384, 575},
+            {0, 576, 576}
         }}
     }
 };

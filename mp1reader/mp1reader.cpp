@@ -173,10 +173,16 @@ void loop_over_sb_and_ch(int channels, int bound, int bound_limit, std::function
 }
 
 const HuffmanEntry4& huffman_decode(RingBitStream& bitstream, const HuffmanEntry4* table, int size) {
+    if (size == 1) {
+        return *table;
+    }
+
     int result = bitstream.read_bit();
     int bits_read = 1;
+    int bits[22] = {};
+    bits[0] = result;
 
-    while (true) {
+    while (bits_read < 22 && !bitstream.eos()) {
         for (size_t i = 0; i < size; i++) {
             if (table[i].hcod == result && table[i].hlen == bits_read) {
                 return table[i];
@@ -184,9 +190,11 @@ const HuffmanEntry4& huffman_decode(RingBitStream& bitstream, const HuffmanEntry
         }
 
         result = (result << 1) | bitstream.read_bit();
+        bits[bits_read] = result & 1;
         ++bits_read;
     }
 
+    bitstream.rewind(bits_read);
     throw std::exception();
 }
 
@@ -212,6 +220,7 @@ const HuffmanEntry2& huffman_decode(RingBitStream& bitstream, const HuffmanEntry
         ++bits_read;
     }
 
+    bitstream.rewind(bits_read);
     throw std::exception();
 }
 
@@ -301,7 +310,7 @@ void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
         }
     }
 
-    // TODO: check if sfbi < 12 is correct. libmad has bigger sfb tables (39 indices) to get around this.
+    // TODO: check if sfbi < 13 is correct. libmad has bigger sfb tables (39 indices) to get around this.
     //       Don't know where they got their additional values from.
     while (l < 576 && sfbi < 13) {
         for (int i = 0; i < sfb[sfbi].width; i++) {
@@ -607,23 +616,28 @@ int read_huffman_data_III(const Header& header,
     // the granule from part2_3_length, which is the number of bits
     // used for scaleactors and huffman data (in the granule).
     while (granule_bits_read < si.part2_3_length[gr][ch] && count < 576) {
-        const HuffmanEntry4& entry = huffman_decode(reservoir, count1table, 16);
-        int v = entry.v;
+        const HuffmanEntry4 *entry;
+        try {
+            entry = &huffman_decode(reservoir, count1table, 16);
+        } catch (std::exception e) {
+            break;
+        }
+        int v = entry->v;
         if (v != 0) {
             if (reservoir.read_bit()) v = -v;
             granule_bits_read++;
         }
-        int w = entry.w;
+        int w = entry->w;
         if (w != 0) {
             if (reservoir.read_bit()) w = -w;
             granule_bits_read++;
         }
-        int x = entry.x;
+        int x = entry->x;
         if (x != 0) {
             if (reservoir.read_bit()) x = -x;
             granule_bits_read++;
         }
-        int y = entry.y;
+        int y = entry->y;
         if (y != 0) {
             if (reservoir.read_bit()) y = -y;
             granule_bits_read++;
@@ -641,7 +655,7 @@ int read_huffman_data_III(const Header& header,
 
         count += 4;
 
-        granule_bits_read += entry.hlen;
+        granule_bits_read += entry->hlen;
     }
 
     if (granule_bits_read > si.part2_3_length[gr][ch]) {
@@ -650,7 +664,7 @@ int read_huffman_data_III(const Header& header,
     }
 
     if (granule_bits_read < si.part2_3_length[gr][ch]) {
-        for (size_t i = granule_bits_read; i < si.part2_3_length[gr][ch]; i++) {
+        for (size_t i = granule_bits_read; i < si.part2_3_length[gr][ch] && !reservoir.eos(); i++) {
             reservoir.read_bit();
         }
     }
@@ -891,7 +905,7 @@ int main()
     char* content;
     size_t content_length;
     {
-        std::ifstream infile(R"(..\res\yellow.mp3)", std::ios::binary);
+        std::ifstream infile(R"(..\res\testcase.mp3)", std::ios::binary);
         infile.seekg(0, std::ios::end);
         content_length = infile.tellg();
         infile.seekg(0, std::ios::beg);
@@ -921,6 +935,7 @@ int main()
 
     RingBitStream reservoir { 65536 };
     double lastValues[2][32][18] = {};
+    int frameCount = 0;
 
     while (!bitstream.eof()) {
         if (!synchronize(bitstream)) {
@@ -932,13 +947,14 @@ int main()
         const size_t frame_position = bitstream.get_current_byte() - 1;
 
         Header header = read_header(bitstream);
-        std::cout << "Layer " << header.layer << ", " << header.bitrate << ", " << header.padding_bit << ", " << header.protection_bit << ", " << header.frame_size << std::endl;
+        std::cout << "Layer " << header.layer << ", " << header.bitrate << ", " << header.padding_bit << ", " << header.protection_bit << ", " << header.frame_size << " (" << frameCount << ")" << std::endl;
 
         if (header.layer != 3) {
             std::cout << "ERRROR: LOST SYNC!" << std::endl;
             continue;
         }
 
+        ++frameCount;
         if (header.layer == 1) {
             AudioDataI audioData = read_audio_data_I(header, bitstream);
 
