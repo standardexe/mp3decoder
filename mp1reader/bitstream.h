@@ -32,6 +32,7 @@ public:
 
     void seek_to_end() {
         read_pos = write_pos;
+        current_bit = 0;
     }
 
     void rewind(int bits) {
