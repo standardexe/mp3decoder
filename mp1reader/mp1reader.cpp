@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <cmath>
 #include <functional>
 
 #include "bitstream.h"
@@ -419,8 +420,8 @@ struct layer_III_sideinfo {
     int preflag[2][2] = {};
     int scalefac_scale[2][2] = {};
     int count1table_select[2][2] = {};
-    int scalefac_l[2][2][21] = {};
-    int scalefac_s[2][2][12][3] = {};
+    int scalefac_l[2][21] = {};
+    int scalefac_s[2][12][3] = {};
 };
 
 void read_side_info_III(const Header& header, layer_III_sideinfo& si, BitStream& bitstream) {
@@ -474,13 +475,13 @@ void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBi
         if (si.mixed_block_flag[gr][ch]) {
             for (size_t sfb = 0; sfb < 8; sfb++) {
                 const int bits = layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]];
-                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
             }
             for (size_t sfb = 3; sfb < 12; sfb++) {
                 for (size_t window = 0; window < 3; window++) {
                     const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
                                                 layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
-                    si.scalefac_s[gr][ch][sfb][window] = reservoir.read_bits(bits);
+                    si.scalefac_s[ch][sfb][window] = reservoir.read_bits(bits);
                 }
             }
         } else {
@@ -488,7 +489,7 @@ void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBi
                 for (size_t window = 0; window < 3; window++) {
                     const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
                                                 layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
-                    si.scalefac_s[gr][ch][sfb][window] = reservoir.read_bits(bits);
+                    si.scalefac_s[ch][sfb][window] = reservoir.read_bits(bits);
                 }
             }
         }
@@ -501,25 +502,25 @@ void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBi
         if ((si.scfsi[ch][0] == 0) || (gr == 0)) {
             for (size_t sfb = 0; sfb < 6; sfb++) {
                 const int bits = scalefactor_bits(sfb);
-                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
             }
         }
         if ((si.scfsi[ch][1] == 0) || (gr == 0)) {
             for (size_t sfb = 6; sfb < 11; sfb++) {
                 const int bits = scalefactor_bits(sfb);
-                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
             }
         }
         if ((si.scfsi[ch][2] == 0) || (gr == 0)) {
             for (size_t sfb = 11; sfb < 16; sfb++) {
                 const int bits = scalefactor_bits(sfb);
-                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
             }
         }
         if ((si.scfsi[ch][3] == 0) || (gr == 0)) {
             for (size_t sfb = 16; sfb < 21; sfb++) {
                 const int bits = scalefactor_bits(sfb);
-                si.scalefac_l[gr][ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
             }
         }
     }
@@ -541,8 +542,8 @@ int read_huffman_data_III(const Header& header,
         si.block_type[gr][ch],
         si.global_gain[gr][ch],
         si.sub_block_gain[gr][ch],
-        si.scalefac_l[gr][ch],
-        si.scalefac_s[gr][ch],
+        si.scalefac_l[ch],
+        si.scalefac_s[ch],
         si.block_type[gr][ch] == 2 ? ScaleFactorBandsShort[header.sampling_frequency].data() :
                                      ScaleFactorBandsLong[header.sampling_frequency].data(),
         exponents);
