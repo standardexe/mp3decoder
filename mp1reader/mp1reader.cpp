@@ -53,7 +53,8 @@ struct AudioDataIII {
     double output[2][2][32][18] = {};
 };
 
-float V[1024] = {};
+float V1[1024] = {};
+float V2[1024] = {};
 
 size_t left_most_bit_index(int value) {
     size_t counter = 0;
@@ -861,7 +862,7 @@ AudioDataI read_audio_data_I(const Header& header, BitStream& bitstream) {
 }
 
 // ISO/IEC 11172-3 (Figure A.2)
-void synthesis(float samples[32], float result[32]) {
+void synthesis(float *V, float samples[32], float result[32]) {
     for (size_t i = 1023; i >= 64; i--) {
         V[i] = V[i - 64];
     }
@@ -922,17 +923,21 @@ int main()
     outfile.write(new char[44], 44);
     size_t sample_count = 0;
 
-    float in_samples[32];
-    float out_samples[32];
+    float in_samples[2][32];
+    float out_samples[2][32];
+    int channels = 0;
 
-    auto write_samples = [&out_samples, &outfile, &sample_count]() {
+    auto write_samples = [&channels, &out_samples, &outfile, &sample_count]() {
         for (size_t j = 0; j < 32; j++) {
-            const short sample = clamp(32000 * out_samples[j]);
-            outfile.write(reinterpret_cast<const char*>(&sample), 2);
+            const short sample_l = clamp(32000 * out_samples[0][j]);
+            outfile.write(reinterpret_cast<const char*>(&sample_l), 2);
+            if (channels == 2) {
+                const short sample_r = clamp(32000 * out_samples[1][j]);
+                outfile.write(reinterpret_cast<const char*>(&sample_r), 2);
+            }
         }
         sample_count += 32;
     };
-
 
     RingBitStream reservoir { 65536 };
     double lastValues[2][32][18] = {};
@@ -961,9 +966,9 @@ int main()
 
             for (size_t i = 0; i < 12; i++) {
                 for (size_t j = 0; j < 32; j++) {
-                    in_samples[j] = audioData.requantized_samples[0][j][i];
+                    in_samples[0][j] = audioData.requantized_samples[0][j][i];
                 }
-                synthesis(in_samples, out_samples);
+                synthesis(V1, in_samples[0], out_samples[0]);
                 write_samples();
             }
         } else if (header.layer == 2) {
@@ -971,9 +976,9 @@ int main()
 
             for (size_t i = 0; i < 36; i++) {
                 for (size_t j = 0; j < 32; j++) {
-                    in_samples[j] = audioData.requantized_samples[0][j][i];
+                    in_samples[0][j] = audioData.requantized_samples[0][j][i];
                 }
-                synthesis(in_samples, out_samples);
+                synthesis(V1, in_samples[0], out_samples[0]);
                 write_samples();
             }
         } else if (header.layer == 3) {
@@ -981,9 +986,11 @@ int main()
             for (size_t gr = 0; gr < 2; gr++) {
                 for (size_t i = 0; i < 18; i++) {
                     for (size_t j = 0; j < 32; j++) {
-                        in_samples[j] = 1 * audioData.output[gr][0][j][i];
+                        in_samples[0][j] = 1 * audioData.output[gr][0][j][i];
+                        in_samples[1][j] = 1 * audioData.output[gr][1][j][i];
                     }
-                    synthesis(in_samples, out_samples);
+                    synthesis(V1, in_samples[0], out_samples[0]);
+                    synthesis(V2, in_samples[1], out_samples[1]);
                     write_samples();
                 }
             }
@@ -993,5 +1000,5 @@ int main()
         }
     }
 
-    write_wav_header(outfile, 44100, sample_count);
+    write_wav_header(outfile, 44100, channels, sample_count);
 }
