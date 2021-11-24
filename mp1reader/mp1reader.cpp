@@ -702,61 +702,52 @@ int get_first_zero_band(double* samples, ScaleFactorBand* bands, size_t size) {
 void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_III_sideinfo& si) {
     const double SQRT_2 = 1.4142135623730950488016887242097;
 
-    //size_t sfbi_ms_start = 0;
-    //size_t sfbi_ms_end = 0;
-    //size_t sfbi_intensity_start = 0;
-    //size_t sfbi_intensity_end = 0;
-    //ScaleFactorBand* sfbs = nullptr;
-    //size_t sfbs_length = 0;
+    size_t sfbi_ms_start = 0;
+    size_t sfbi_ms_end = 0;
+    size_t sfbi_intensity_start = 0;
+    size_t sfbi_intensity_end = 0;
+    ScaleFactorBand* sfbs = nullptr;
+    size_t sfbs_length = 0;
 
-    //if (header.mode_extension & ModeExtension::IntensityStereo) {
-    //    if (si.block_type[gr][0] == 2) {
-    //        sfbs = ScaleFactorBandsShort[header.sampling_frequency].data();
-    //        sfbs_length = ScaleFactorBandsShort[header.sampling_frequency].size();
-    //        sfbi_intensity_start = get_first_zero_shortband(data.requantized_samples[1][gr], sfbs, 12);
-    //    } else {
-    //        sfbs = ScaleFactorBandsLong[header.sampling_frequency].data();
-    //        sfbs_length = ScaleFactorBandsLong[header.sampling_frequency].size();
-    //        sfbi_intensity_start = get_first_zero_band(data.requantized_samples[1][gr], sfbs, 23);
-    //    }
-    //}
+    if (si.block_type[gr][0] == 2) {
+        sfbs = ScaleFactorBandsShort[header.sampling_frequency].data();
+        sfbs_length = ScaleFactorBandsShort[header.sampling_frequency].size();
+    } else {
+        sfbs = ScaleFactorBandsLong[header.sampling_frequency].data();
+        sfbs_length = ScaleFactorBandsLong[header.sampling_frequency].size();
+    }
 
-    //if (header.mode_extension & ModeExtension::MsStereo) {
-    //    sfbi_ms_start = 0;
-    //    sfbi_ms_end = (header.mode_extension & ModeExtension::IntensityStereo) ? sfbi_intensity_start : 23;
-    //}
+    if (header.mode_extension & ModeExtension::IntensityStereo) {
+        sfbi_intensity_start = get_first_zero_band(data.requantized_samples[1][gr], sfbs, sfbs_length);
+        sfbi_intensity_end = sfbs_length;
+    }
 
-    //for ()
+    if (header.mode_extension & ModeExtension::MsStereo) {
+        sfbi_ms_start = 0;
+        sfbi_ms_end = (header.mode_extension & ModeExtension::IntensityStereo) ? sfbi_intensity_start : sfbs_length;
+    }
 
-        if (header.mode_extension == ModeExtension::MsStereo) {
-            for (size_t i = 0; i < 576; i++) {
-                const double m = data.requantized_samples[0][gr][i];
-                const double s = data.requantized_samples[1][gr][i];
-                data.requantized_samples[0][gr][i] = (m + s) / SQRT_2;
-                data.requantized_samples[1][gr][i] = (m - s) / SQRT_2;
-            }
-        } else if (header.mode_extension == ModeExtension::IntensityStereo) {
-            ScaleFactorBand* sfbs = ScaleFactorBandsLong[header.sampling_frequency].data();
-            const int sfbi = get_first_zero_band(data.requantized_samples[1][gr], sfbs, 23);
-
-            for (size_t i = sfbi; i < 21; i++) {
-                auto is_pos = si.scalefac_l[1][i];
-                if (is_pos >= 7) continue;
-                double is_ratio = tan(is_pos * M_PI / 12);
-                for (size_t k = sfbs[i].start; k <= sfbs[i].end; k++) {
-                    double sample_left = data.requantized_samples[0][gr][k];
-                    double coeff_l = is_ratio / (1 + is_ratio);
-                    double coeff_r = 1 / (1 + is_ratio);
-                    data.requantized_samples[0][gr][k] = sample_left * coeff_l;
-                    data.requantized_samples[1][gr][k] = sample_left * coeff_r;
-                }
-            }
-        } else if (header.mode_extension == ModeExtension::Stereo) {
-            // Normal stereo
-        } else {
-            std::cout << "UNSUPPORTED MODE EXTENSION!" << std::endl;
+    for (size_t sfbi = sfbi_ms_start; sfbi < sfbi_ms_end; sfbi++) {
+        for (size_t i = sfbs[sfbi].start; i <= sfbs[sfbi].end; i++) {
+            const double m = data.requantized_samples[0][gr][i];
+            const double s = data.requantized_samples[1][gr][i];
+            data.requantized_samples[0][gr][i] = (m + s) / SQRT_2;
+            data.requantized_samples[1][gr][i] = (m - s) / SQRT_2;
         }
-    //}
+    }
+
+    for (size_t sfbi = sfbi_intensity_start; sfbi < sfbi_intensity_end; sfbi++) {
+        auto is_pos = si.scalefac_l[1][sfbi];
+        if (is_pos >= 7) continue;
+        double is_ratio = tan(is_pos * M_PI / 12);
+        for (size_t i = sfbs[sfbi].start; i <= sfbs[sfbi].end; i++) {
+            double sample_left = data.requantized_samples[0][gr][i];
+            double coeff_l = is_ratio / (1 + is_ratio);
+            double coeff_r = 1 / (1 + is_ratio);
+            data.requantized_samples[0][gr][i] = sample_left * coeff_l;
+            data.requantized_samples[1][gr][i] = sample_left * coeff_r;
+        }
+    }
 }
 
 AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, RingBitStream& reservoir, double lastValues[2][32][18]) {
