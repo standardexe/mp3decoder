@@ -827,154 +827,70 @@ std::array<int, 22> layer_III_pretab = {{
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 3, 2, 0
 }};
 
-// TODO: this can be more elegant. Like only use the start or smth.
 struct ScaleFactorBand {
-    int width;
-    int start;
-    int end;
+    size_t width;
+    size_t start;
+    size_t end;
 };
 
-std::map< int, std::array<ScaleFactorBand, 13> > ScaleFactorBandsShort = {
+template<size_t N>
+constexpr std::array<ScaleFactorBand, 3*N> MakeShortScaleFactorBandArray(std::array<size_t, N> sizes) {
+    std::array<ScaleFactorBand, 3*N> result;
+    size_t start = 0;
+
+    for (size_t i = 0; i < N; i++) {
+        result[3 * i + 0] = { sizes[i], start, start + sizes[i] - 1 };
+        start += sizes[i];
+        result[3 * i + 1] = { sizes[i], start, start + sizes[i] - 1 };
+        start += sizes[i];
+        result[3 * i + 2] = { sizes[i], start, start + sizes[i] - 1 };
+        start += sizes[i];
+    }
+
+    return result;
+}
+
+template<size_t N>
+constexpr std::array<ScaleFactorBand, N> MakeLongScaleFactorBandArray(std::array<size_t, N> sizes) {
+    std::array<ScaleFactorBand, N> result;
+    size_t start = 0;
+
+    for (size_t i = 0; i < N; i++) {
+        result[i] = { sizes[i], start, start + sizes[i] - 1 };
+        start += sizes[i];
+    }
+
+    return result;
+
+}
+
+std::map< int, std::array<ScaleFactorBand, 39> > ScaleFactorBandsShort = {
     {
         32000,
-        {{
-            {4, 0, 3},
-            {4, 4, 7},
-            {4, 8, 11},
-            {4, 12, 15},
-            {6, 16, 21},
-            {8, 22, 29},
-            {12, 30, 41},
-            {16, 42, 57},
-            {20, 58, 77},
-            {26, 78, 103},
-            {34, 104, 137},
-            {42, 138, 179},
-            {12, 180, 191}
-        }}
+        MakeShortScaleFactorBandArray<13>({{ 4, 4, 4, 4, 6, 8, 12, 16, 20, 26, 34, 42, 12 }})
     },
     {
         44100,
-        {{
-            {4, 0, 3},
-            {4, 4, 7},
-            {4, 8, 11},
-            {4, 12, 15},
-            {6, 16, 21},
-            {8, 22, 29},
-            {10, 30, 39},
-            {12, 40, 51},
-            {14, 52, 65},
-            {18, 66, 83},
-            {22, 84, 105},
-            {30, 106, 135},
-            {56, 136, 191}
-        }}
+        MakeShortScaleFactorBandArray<13>({{ 4, 4, 4, 4, 6, 8, 10, 12, 14, 18, 22, 30, 56 }})
     },
     {
         48000,
-        {{
-            {4, 0, 3},
-            {4, 4, 7},
-            {4, 8, 11},
-            {4, 12, 15},
-            {6, 16, 21},
-            {6, 22, 27},
-            {10, 28, 37},
-            {12, 38, 49},
-            {14, 50, 63},
-            {16, 64, 79},
-            {20, 80, 99},
-            {26, 100, 125},
-            {66, 126, 191}
-        }}
+        MakeShortScaleFactorBandArray<13>({{ 4, 4, 4, 4, 6, 6, 10, 12, 14, 16, 20, 26, 66 }})
     }
 };
 
 std::map< int, std::array<ScaleFactorBand, 23> > ScaleFactorBandsLong = {
     {
         32000,
-        {{
-            {4, 0, 3},
-            {4, 4, 7},
-            {4, 8, 11},
-            {4, 12, 15},
-            {4, 16, 19},
-            {4, 20, 23},
-            {6, 24, 29},
-            {6, 30, 35},
-            {8, 36, 43},
-            {10, 44, 53},
-            {12, 54, 65},
-            {16, 66, 81},
-            {20, 82, 101},
-            {24, 102, 125},
-            {30, 126, 155},
-            {38, 156, 193},
-            {46, 194, 239},
-            {56, 240, 295},
-            {68, 296, 363},
-            {84, 364, 447},
-            {102, 448, 549},
-            {25, 550, 575},
-            {0, 576, 576},
-        }}
+        MakeLongScaleFactorBandArray<23>({{ 4, 4, 4, 4, 4, 4, 6, 6, 8, 10, 12, 16, 20, 24, 30, 38, 46, 56, 68, 84, 102, 25, 0 }})
     },
     {
         44100,
-        {{
-            {4, 0, 3},
-            {4, 4, 7},
-            {4, 8, 11},
-            {4, 12, 15},
-            {4, 16, 19},
-            {4, 20, 23},
-            {6, 24, 29},
-            {6, 30, 35},
-            {8, 36, 43},
-            {8, 44, 51},
-            {10, 52, 61},
-            {12, 62, 73},
-            {16, 74, 89},
-            {20, 90, 109},
-            {24, 110, 133},
-            {28, 134, 161},
-            {34, 162, 195},
-            {42, 196, 237},
-            {50, 238, 287},
-            {54, 288, 341},
-            {76, 342, 417},
-            {158, 418, 575},
-            {0, 576, 576}
-        }}
+        MakeLongScaleFactorBandArray<23>({{ 4, 4, 4, 4, 4, 4, 6, 6, 8, 8, 10, 12, 16, 20, 24, 28, 34, 42, 50, 54, 76, 158, 0 }})
     },
     {
         48000,
-        {{
-            {4, 0, 3},
-            {4, 4, 7},
-            {4, 8, 11},
-            {4, 12, 15},
-            {4, 16, 19},
-            {4, 20, 23},
-            {6, 24, 29},
-            {6, 30, 35},
-            {6, 36, 41},
-            {8, 42, 49},
-            {10, 50, 59},
-            {12, 60, 71},
-            {16, 72, 87},
-            {18, 88, 105},
-            {22, 106, 127},
-            {28, 128, 155},
-            {34, 156, 189},
-            {40, 190, 229},
-            {46, 230, 275},
-            {54, 276, 329},
-            {54, 330, 383},
-            {192, 384, 575},
-            {0, 576, 576}
-        }}
+        MakeLongScaleFactorBandArray<23>({{ 4, 4, 4, 4, 4, 4, 6, 6, 6, 8, 10, 12, 16, 18, 22, 28, 34, 40, 46, 54, 54, 192, 0 }})
     }
 };
 

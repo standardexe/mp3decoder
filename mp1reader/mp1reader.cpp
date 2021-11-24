@@ -245,7 +245,7 @@ void exponents_III(
     const int global_gain, 
     const int *subblock_gain, 
     const int scalefac_l[22], 
-    const int scalefac_s[12][3], 
+    const int scalefac_s[39], 
     const ScaleFactorBand *sfb, 
     double exp[576]) {
     
@@ -280,19 +280,19 @@ void exponents_III(
         double gain1 = (gain - 8 * subblock_gain[1])/4.0;
         double gain2 = (gain - 8 * subblock_gain[2])/4.0;
 
-        // TODO: check if sfbi < 12 is correct. libmad has bigger sfb tables (39 indices) to get around this.
-        //       Don't know where they got their additional values from.
-        while (l < 576 && sfbi < 12) {
-            double exponent0 = gain0 - (scalefac_multiplier * scalefac_s[sfbi][0]);
-            double exponent1 = gain1 - (scalefac_multiplier * scalefac_s[sfbi][1]);
-            double exponent2 = gain2 - (scalefac_multiplier * scalefac_s[sfbi][2]);
+        while (l < 576 && sfbi < 39) {
+            double exponent0 = gain0 - (scalefac_multiplier * scalefac_s[sfbi + 0]);
+            double exponent1 = gain1 - (scalefac_multiplier * scalefac_s[sfbi + 1]);
+            double exponent2 = gain2 - (scalefac_multiplier * scalefac_s[sfbi + 2]);
 
-            fill_band(pow(2, exponent0), sfb[sfbi].start * 3 + 0 * sfb[sfbi].width, sfb[sfbi].start * 3 + 1 * sfb[sfbi].width);
-            fill_band(pow(2, exponent1), sfb[sfbi].start * 3 + 1 * sfb[sfbi].width, sfb[sfbi].start * 3 + 2 * sfb[sfbi].width);
-            fill_band(pow(2, exponent2), sfb[sfbi].start * 3 + 2 * sfb[sfbi].width, sfb[sfbi].start * 3 + 3 * sfb[sfbi].width);
+            fill_band(pow(2, exponent0), sfb[sfbi + 0].start, sfb[sfbi + 0].end);
+            l += sfb[sfbi + 0].width;
+            fill_band(pow(2, exponent1), sfb[sfbi + 1].start, sfb[sfbi + 1].end);
+            l += sfb[sfbi + 1].width;
+            fill_band(pow(2, exponent2), sfb[sfbi + 2].start, sfb[sfbi + 2].end);
+            l += sfb[sfbi + 2].width;
  
-            l += 3 * sfb[sfbi].width;
-            sfbi++;
+            sfbi += 3;
         }
 
         while (l < 576) {
@@ -316,15 +316,13 @@ void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
         }
     }
 
-    // TODO: check if sfbi < 12 is correct. libmad has bigger sfb tables (39 indices) to get around this.
-    //       Don't know where they got their additional values from.
-    while (l < 576 && sfbi < 12) {
+    while (l < 576 && sfbi < 36) {
         for (int i = 0; i < sfb[sfbi].width; i++) {
-            tmp[l++] = samples[3 * sfb[sfbi].start + 0 * sfb[sfbi].width + i];
-            tmp[l++] = samples[3 * sfb[sfbi].start + 1 * sfb[sfbi].width + i];
-            tmp[l++] = samples[3 * sfb[sfbi].start + 2 * sfb[sfbi].width + i];
+            tmp[l++] = samples[sfb[sfbi + 0].start + i];
+            tmp[l++] = samples[sfb[sfbi + 1].start + i];
+            tmp[l++] = samples[sfb[sfbi + 2].start + i];
         }
-        sfbi++;
+        sfbi += 3;
     }
 
     memcpy(samples, tmp, 576 * sizeof(double));
@@ -424,7 +422,7 @@ struct layer_III_sideinfo {
     int scalefac_scale[2][2] = {};
     int count1table_select[2][2] = {};
     int scalefac_l[2][21] = {};
-    int scalefac_s[2][12][3] = {};
+    int scalefac_s[2][39] = {};
 };
 
 void read_side_info_III(const Header& header, layer_III_sideinfo& si, BitStream& bitstream) {
@@ -481,19 +479,19 @@ void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBi
                 si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
             }
             for (size_t sfb = 3; sfb < 12; sfb++) {
-                for (size_t window = 0; window < 3; window++) {
-                    const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
-                                                layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
-                    si.scalefac_s[ch][sfb][window] = reservoir.read_bits(bits);
-                }
+                const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
+                                            layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
+                si.scalefac_s[ch][3 * sfb + 0] = reservoir.read_bits(bits);
+                si.scalefac_s[ch][3 * sfb + 1] = reservoir.read_bits(bits);
+                si.scalefac_s[ch][3 * sfb + 2] = reservoir.read_bits(bits); 
             }
         } else {
             for (size_t sfb = 0; sfb < 12; sfb++) {
-                for (size_t window = 0; window < 3; window++) {
-                    const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
-                                                layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
-                    si.scalefac_s[ch][sfb][window] = reservoir.read_bits(bits);
-                }
+                const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
+                                            layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
+                si.scalefac_s[ch][3 * sfb + 0] = reservoir.read_bits(bits);
+                si.scalefac_s[ch][3 * sfb + 1] = reservoir.read_bits(bits);
+                si.scalefac_s[ch][3 * sfb + 2] = reservoir.read_bits(bits); 
             }
         }
     } else {
