@@ -113,7 +113,7 @@ public:
     }
 
     size_t get_current_bit() const { return current_bit % 8; }
-    size_t get_current_byte() const { return current_byte; }
+    size_t get_current_byte() const { return current_byte + (current_bit == 8); }
     size_t position() const { return current_byte * 8 + current_bit; }
 
 private:
