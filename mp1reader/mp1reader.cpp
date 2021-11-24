@@ -777,24 +777,11 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
 
     AudioDataIII result;
 
-    std::fstream f;
-    f.open("out.me", std::fstream::out | std::fstream::app);
-
     for (size_t gr = 0; gr < 2; gr++) {
         for (size_t ch = 0; ch < channels; ch++) {
             const int current_position = reservoir.position();
             read_scale_factors_III(header, si, reservoir, gr, ch);
             read_huffman_data_III(header, si, reservoir, gr, ch, result, reservoir.position() - current_position);
-
-            f << "gr " << gr << " ch " << ch << std::endl;
-            for (size_t i = 0; i < 32; i++) {
-                for (size_t j = 0; j < 18; j++) {
-                    //f << result.requantized_samples[ch][gr][i * 18 + j] << ", ";
-                    f << std::round(result.requantized_samples[ch][gr][i * 18 + j] * 100000000)/100000000.0 << ", ";
-                }
-                f << std::endl;
-            }
-            f << std::endl;
 
             if (si.block_type[gr][ch] == 2) {
                 reorder_III(result.requantized_samples[ch][gr], si.mixed_block_flag[gr][ch], ScaleFactorBandsShort[header.sampling_frequency].data());
@@ -1036,20 +1023,30 @@ int main()
     RingBitStream reservoir { 65536 };
     double lastValues[2][32][18] = {};
     int frameCount = 0;
+    int samplerate = 0;
 
     while (!bitstream.eof()) {
         if (!synchronize(bitstream)) {
             std::cout << "no sync found!" << std::endl;
             break;
         }
-        std::cout << "Found frame @ " << bitstream.get_current_byte() << std::endl;
+        std::cout << "Found frame " << frameCount << " @ " << bitstream.get_current_byte() << std::endl;
 
         const size_t frame_position = bitstream.get_current_byte() - 1;
 
         Header header = read_header(bitstream);
-        std::cout << "Layer " << header.layer << ", " << header.bitrate << ", " << header.padding_bit << ", " << header.protection_bit << ", " << header.frame_size << " (" << frameCount << ")" << std::endl;
+        channels = header.mode == Mode::SingleChannel ? 1 : 2;
+        samplerate = header.sampling_frequency;
+        std::cout << "Layer " <<
+            header.layer << ", " <<
+            header.bitrate << ", " <<
+            (int)header.mode << ", " << 
+            (int)header.mode_extension << ", " << 
+            header.frame_size << ", " << 
+            " (" << frameCount << ")" << std::endl;
 
-        if (header.layer != 3) {
+        // What exactly is header.id == 1? It's supposed to be reserved, but Lame may use it.
+        if (header.layer != 3 || (header.id != 3 && header.id != 1)) {
             std::cout << "ERRROR: LOST SYNC!" << std::endl;
             continue;
         }
@@ -1077,6 +1074,7 @@ int main()
             }
         } else if (header.layer == 3) {
             AudioDataIII audioData = read_audio_data_III(header, bitstream, reservoir, lastValues);
+
             for (size_t gr = 0; gr < 2; gr++) {
                 for (size_t i = 0; i < 18; i++) {
                     for (size_t j = 0; j < 32; j++) {
@@ -1094,5 +1092,5 @@ int main()
         }
     }
 
-    write_wav_header(outfile, 44100, channels, sample_count);
+    write_wav_header(outfile, samplerate, channels, sample_count);
 }
