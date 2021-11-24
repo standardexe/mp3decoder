@@ -127,22 +127,6 @@ Header read_header(BitStream& bitstream) {
     return header;
 }
 
-int find_frame_size(const Header& header, BitStream& bitstream) {
-    const size_t current_byte = bitstream.get_current_byte();
-    const size_t current_bit = bitstream.get_current_bit();
-
-    while (synchronize(bitstream)) {
-        const size_t next_header_position = bitstream.get_current_byte() - 2;
-        Header next_header = read_header(bitstream);
-        if (next_header.bitrate == header.bitrate && next_header.sampling_frequency == header.sampling_frequency) {
-            bitstream.go_to_byte(current_byte);
-            bitstream.read_bits(current_bit);
-            return next_header_position - current_byte;
-        }
-    }
-    return 0;
-}
-
 struct layer_II_quantization_table_info {
     int (*table)[32][16];
     int (*nbal)[32];
@@ -1055,10 +1039,6 @@ int main()
         const size_t frame_position = bitstream.get_current_byte() - 1;
 
         Header header = read_header(bitstream);
-
-        if (header.bitrate == 0) {
-            header.frame_size = find_frame_size(header, bitstream);
-        }
 
         if (header.sampling_frequency == -1 || header.bitrate == 0) {
             std::cout << "ERRROR: Unsupported stream!" << std::endl;
