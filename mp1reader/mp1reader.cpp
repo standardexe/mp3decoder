@@ -10,7 +10,7 @@
 
 #define NOT_IMPLEMENTED() do { throw std::exception("not implemented"); } while(false);
 
-enum class Mode { Stereo, IntensityStereo, DualChannel, SingleChannel };
+enum class Mode { Stereo, JointStereo, DualChannel, SingleChannel };
 
 enum class ModeExtension { Stereo = 0, IntensityStereo = 1, MsStereo = 2 };
 
@@ -125,6 +125,22 @@ Header read_header(BitStream& bitstream) {
         header.crc16            = bitstream.read_bits<unsigned short>(16);
     header.frame_size           = 144 * header.bitrate * 1000 / header.sampling_frequency + header.padding_bit;
     return header;
+}
+
+int find_frame_size(const Header& header, BitStream& bitstream) {
+    const size_t current_byte = bitstream.get_current_byte();
+    const size_t current_bit = bitstream.get_current_bit();
+
+    while (synchronize(bitstream)) {
+        const size_t next_header_position = bitstream.get_current_byte() - 2;
+        Header next_header = read_header(bitstream);
+        if (next_header.bitrate == header.bitrate && next_header.sampling_frequency == header.sampling_frequency) {
+            bitstream.go_to_byte(current_byte);
+            bitstream.read_bits(current_bit);
+            return next_header_position - current_byte;
+        }
+    }
+    return 0;
 }
 
 struct layer_II_quantization_table_info {
@@ -765,7 +781,7 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
         _ASSERT(bitstream.get_current_bit() == 0);
         reservoir.seek_to_end();
 
-        for (size_t i = (channels == 2 ? 32 : 17) + 4; i < header.frame_size; i++) {
+        for (size_t i = (channels == 2 ? 32 : 17) + (header.protection_bit ? 0 : 2) + 4; i < header.frame_size; i++) {
             unsigned char data = bitstream.read_bits<unsigned char>(8);
             reservoir.write(&data, 1);
         }
@@ -789,7 +805,10 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
                 alias_reduce_III(result, ch, gr);
             }
         }
-        stereo_III(header, result, gr, si);
+
+        if (header.mode == Mode::JointStereo) {
+            stereo_III(header, result, gr, si);
+        }
     }
 
     for (size_t gr = 0; gr < 2; gr++) {
@@ -916,7 +935,7 @@ AudioDataI read_audio_data_I(const Header& header, BitStream& bitstream) {
     AudioDataI data;
 
     const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
-    const int bound = header.mode == Mode::IntensityStereo ? table_bounds[static_cast<int>(header.mode_extension)] : 32;
+    const int bound = header.mode == Mode::JointStereo ? table_bounds[static_cast<int>(header.mode_extension)] : 32;
 
     loop_over_sb_and_ch(channels, bound, 32, [&](int ch, int sb, bool is_intensity) {
         data.allocations[ch][sb] = table_allocation[bitstream.read_bits(4)];
@@ -1024,6 +1043,7 @@ int main()
     double lastValues[2][32][18] = {};
     int frameCount = 0;
     int samplerate = 0;
+    int lastLayer = -1;
 
     while (!bitstream.eof()) {
         if (!synchronize(bitstream)) {
@@ -1035,6 +1055,30 @@ int main()
         const size_t frame_position = bitstream.get_current_byte() - 1;
 
         Header header = read_header(bitstream);
+
+        if (header.bitrate == 0) {
+            header.frame_size = find_frame_size(header, bitstream);
+        }
+
+        if (header.sampling_frequency == -1 || header.bitrate == 0) {
+            std::cout << "ERRROR: Unsupported stream!" << std::endl;
+            bitstream.go_to_byte(bitstream.get_current_byte() - 2);
+            continue;
+        }
+
+        // What exactly is header.id == 1? It's supposed to be reserved, but Lame may use it.
+        if ((header.id != 3 && header.id != 1)) {
+            std::cout << "ERRROR: LOST SYNC!" << std::endl;
+            continue;
+        }
+
+        if (header.layer != lastLayer && lastLayer != -1) {
+            std::cout << "ERROR: WRONG LAYER NUMBER!" << std::endl;
+            bitstream.go_to_byte(bitstream.get_current_byte() - 2);
+            continue;
+        }
+
+        
         channels = header.mode == Mode::SingleChannel ? 1 : 2;
         samplerate = header.sampling_frequency;
         std::cout << "Layer " <<
@@ -1044,12 +1088,6 @@ int main()
             (int)header.mode_extension << ", " << 
             header.frame_size << ", " << 
             " (" << frameCount << ")" << std::endl;
-
-        // What exactly is header.id == 1? It's supposed to be reserved, but Lame may use it.
-        if (header.layer != 3 || (header.id != 3 && header.id != 1)) {
-            std::cout << "ERRROR: LOST SYNC!" << std::endl;
-            continue;
-        }
 
         ++frameCount;
         if (header.layer == 1) {
@@ -1090,6 +1128,8 @@ int main()
         else {
             bitstream.go_to_byte(bitstream.get_current_byte() - 2);
         }
+
+        lastLayer = header.layer;
     }
 
     write_wav_header(outfile, samplerate, channels, sample_count);

@@ -82,7 +82,7 @@ float table_scale_factors[] = {
 };
 
 // ISO/IEC 11172-3 (2.4.2.3)
-int table_samplerate[] = { 44100, 48000, 32000 };
+int table_samplerate[] = { 44100, 48000, 32000, -1 };
 
 // ISO/IEC 11172-3 (2.4.2.3)
 int table_bounds[] = { 4, 8, 12, 16 };
