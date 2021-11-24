@@ -48,8 +48,8 @@ struct AudioDataII {
 };
 
 struct AudioDataIII {
-    int samples[2][576] = {};
-    double requantized_samples[2][576] = {};
+    int samples[2][2][576] = {};
+    double requantized_samples[2][2][576] = {};
     double output[2][2][32][18] = {};
 };
 
@@ -229,7 +229,11 @@ const HuffmanEntry2& huffman_decode(RingBitStream& bitstream, const HuffmanEntry
 double requantize_III(int sample, double exponent) {
     const int sign = sample < 0 ? -1 : 1;
     const int magnitude = abs(sample);
-    return sign * pow(magnitude, 4 / 3.0) * exponent;
+    double result = sign * pow(magnitude, 4 / 3.0) * exponent;
+    if (std::isnan(exponent) || std::isnan(result)) {
+        std::cout << "ISNAN!" << std::endl;
+    }
+    return result;
 }
 
 void exponents_III(
@@ -276,9 +280,9 @@ void exponents_III(
         double gain1 = (gain - 8 * subblock_gain[1])/4.0;
         double gain2 = (gain - 8 * subblock_gain[2])/4.0;
 
-        // TODO: check if sfbi < 13 is correct. libmad has bigger sfb tables (39 indices) to get around this.
+        // TODO: check if sfbi < 12 is correct. libmad has bigger sfb tables (39 indices) to get around this.
         //       Don't know where they got their additional values from.
-        while (l < 576 && sfbi < 13) {
+        while (l < 576 && sfbi < 12) {
             double exponent0 = gain0 - (scalefac_multiplier * scalefac_s[sfbi][0]);
             double exponent1 = gain1 - (scalefac_multiplier * scalefac_s[sfbi][1]);
             double exponent2 = gain2 - (scalefac_multiplier * scalefac_s[sfbi][2]);
@@ -312,9 +316,9 @@ void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
         }
     }
 
-    // TODO: check if sfbi < 13 is correct. libmad has bigger sfb tables (39 indices) to get around this.
+    // TODO: check if sfbi < 12 is correct. libmad has bigger sfb tables (39 indices) to get around this.
     //       Don't know where they got their additional values from.
-    while (l < 576 && sfbi < 13) {
+    while (l < 576 && sfbi < 12) {
         for (int i = 0; i < sfb[sfbi].width; i++) {
             tmp[l++] = samples[3 * sfb[sfbi].start + 0 * sfb[sfbi].width + i];
             tmp[l++] = samples[3 * sfb[sfbi].start + 1 * sfb[sfbi].width + i];
@@ -326,17 +330,15 @@ void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
     memcpy(samples, tmp, 576 * sizeof(double));
 }
 
-void alias_reduce_III(AudioDataIII& data) {
-    for (size_t gr = 0; gr < 2; gr++) {
-        for (size_t sb = 0; sb < 576 - 18; sb += 18) {
-            for (size_t i = 0; i < 8; i++) {
-                const int idx1 = sb + 17 - i;
-                const int idx2 = sb + 18 + i;
-                double d1 = data.requantized_samples[gr][idx1];
-                double d2 = data.requantized_samples[gr][idx2];
-                data.requantized_samples[gr][idx1] = d1 * layer_III_cs[i] - d2 * layer_III_ca[i];
-                data.requantized_samples[gr][idx2] = d2 * layer_III_cs[i] + d1 * layer_III_ca[i];
-            }
+void alias_reduce_III(AudioDataIII& data, int ch, int gr) {
+    for (size_t sb = 0; sb < 576 - 18; sb += 18) {
+        for (size_t i = 0; i < 8; i++) {
+            const int idx1 = sb + 17 - i;
+            const int idx2 = sb + 18 + i;
+            double d1 = data.requantized_samples[ch][gr][idx1];
+            double d2 = data.requantized_samples[ch][gr][idx2];
+            data.requantized_samples[ch][gr][idx1] = d1 * layer_III_cs[i] - d2 * layer_III_ca[i];
+            data.requantized_samples[ch][gr][idx2] = d2 * layer_III_cs[i] + d1 * layer_III_ca[i];
         }
     }
 }
@@ -602,11 +604,11 @@ int read_huffman_data_III(const Header& header,
             granule_bits_read++;
         }
 
-        result.samples[gr][count+0] = x;
-        result.samples[gr][count+1] = y;
+        result.samples[ch][gr][count+0] = x;
+        result.samples[ch][gr][count+1] = y;
 
-        result.requantized_samples[gr][count + 0] = requantize_III(x, exponents[count + 0]);
-        result.requantized_samples[gr][count + 1] = requantize_III(y, exponents[count + 1]);
+        result.requantized_samples[ch][gr][count + 0] = requantize_III(x, exponents[count + 0]);
+        result.requantized_samples[ch][gr][count + 1] = requantize_III(y, exponents[count + 1]);
 
         count += 2;
     }
@@ -645,15 +647,15 @@ int read_huffman_data_III(const Header& header,
             granule_bits_read++;
         }
 
-        result.samples[gr][count+0] = v;
-        result.samples[gr][count+1] = w;
-        result.samples[gr][count+2] = x;
-        result.samples[gr][count+3] = y;
+        result.samples[ch][gr][count+0] = v;
+        result.samples[ch][gr][count+1] = w;
+        result.samples[ch][gr][count+2] = x;
+        result.samples[ch][gr][count+3] = y;
 
-        result.requantized_samples[gr][count + 0] = requantize_III(v, exponents[count + 0]);
-        result.requantized_samples[gr][count + 1] = requantize_III(w, exponents[count + 1]);
-        result.requantized_samples[gr][count + 2] = requantize_III(x, exponents[count + 2]);
-        result.requantized_samples[gr][count + 3] = requantize_III(y, exponents[count + 3]);
+        result.requantized_samples[ch][gr][count + 0] = requantize_III(v, exponents[count + 0]);
+        result.requantized_samples[ch][gr][count + 1] = requantize_III(w, exponents[count + 1]);
+        result.requantized_samples[ch][gr][count + 2] = requantize_III(x, exponents[count + 2]);
+        result.requantized_samples[ch][gr][count + 3] = requantize_III(y, exponents[count + 3]);
 
         count += 4;
 
@@ -672,6 +674,85 @@ int read_huffman_data_III(const Header& header,
     }
 
     return count;
+}
+
+int get_first_zero_band(double* samples, ScaleFactorBand* bands, size_t size) {
+    int last_nonempty_band = 0;
+
+    for (size_t i = 0; i < size; i++) {
+        bool is_empty = true;
+        for (size_t l = bands[i].start; l < bands[i].end; l++) {
+            if (samples[l] != 0) {
+                is_empty = false;
+                break;
+            }
+        }
+        if (!is_empty) {
+            last_nonempty_band = i;
+        }
+    }
+
+    return last_nonempty_band;
+}
+
+void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_III_sideinfo& si) {
+    const double SQRT_2 = 1.4142135623730950488016887242097;
+
+    //size_t sfbi_ms_start = 0;
+    //size_t sfbi_ms_end = 0;
+    //size_t sfbi_intensity_start = 0;
+    //size_t sfbi_intensity_end = 0;
+    //ScaleFactorBand* sfbs = nullptr;
+    //size_t sfbs_length = 0;
+
+    //if (header.mode_extension & ModeExtension::IntensityStereo) {
+    //    if (si.block_type[gr][0] == 2) {
+    //        sfbs = ScaleFactorBandsShort[header.sampling_frequency].data();
+    //        sfbs_length = ScaleFactorBandsShort[header.sampling_frequency].size();
+    //        sfbi_intensity_start = get_first_zero_shortband(data.requantized_samples[1][gr], sfbs, 12);
+    //    } else {
+    //        sfbs = ScaleFactorBandsLong[header.sampling_frequency].data();
+    //        sfbs_length = ScaleFactorBandsLong[header.sampling_frequency].size();
+    //        sfbi_intensity_start = get_first_zero_band(data.requantized_samples[1][gr], sfbs, 23);
+    //    }
+    //}
+
+    //if (header.mode_extension & ModeExtension::MsStereo) {
+    //    sfbi_ms_start = 0;
+    //    sfbi_ms_end = (header.mode_extension & ModeExtension::IntensityStereo) ? sfbi_intensity_start : 23;
+    //}
+
+    //for ()
+
+        if (header.mode_extension == ModeExtension::MsStereo) {
+            for (size_t i = 0; i < 576; i++) {
+                const double m = data.requantized_samples[0][gr][i];
+                const double s = data.requantized_samples[1][gr][i];
+                data.requantized_samples[0][gr][i] = (m + s) / SQRT_2;
+                data.requantized_samples[1][gr][i] = (m - s) / SQRT_2;
+            }
+        } else if (header.mode_extension == ModeExtension::IntensityStereo) {
+            ScaleFactorBand* sfbs = ScaleFactorBandsLong[header.sampling_frequency].data();
+            const int sfbi = get_first_zero_band(data.requantized_samples[1][gr], sfbs, 23);
+
+            for (size_t i = sfbi; i < 21; i++) {
+                auto is_pos = si.scalefac_l[1][i];
+                if (is_pos >= 7) continue;
+                double is_ratio = tan(is_pos * M_PI / 12);
+                for (size_t k = sfbs[i].start; k <= sfbs[i].end; k++) {
+                    double sample_left = data.requantized_samples[0][gr][k];
+                    double coeff_l = is_ratio / (1 + is_ratio);
+                    double coeff_r = 1 / (1 + is_ratio);
+                    data.requantized_samples[0][gr][k] = sample_left * coeff_l;
+                    data.requantized_samples[1][gr][k] = sample_left * coeff_r;
+                }
+            }
+        } else if (header.mode_extension == ModeExtension::Stereo) {
+            // Normal stereo
+        } else {
+            std::cout << "UNSUPPORTED MODE EXTENSION!" << std::endl;
+        }
+    //}
 }
 
 AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, RingBitStream& reservoir, double lastValues[2][32][18]) {
@@ -701,21 +782,39 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
 
     AudioDataIII result;
 
+    std::fstream f;
+    f.open("out.me", std::fstream::out | std::fstream::app);
+
     for (size_t gr = 0; gr < 2; gr++) {
         for (size_t ch = 0; ch < channels; ch++) {
             const int current_position = reservoir.position();
             read_scale_factors_III(header, si, reservoir, gr, ch);
             read_huffman_data_III(header, si, reservoir, gr, ch, result, reservoir.position() - current_position);
 
-            if (si.block_type[gr][ch] == 2) {
-                reorder_III(result.requantized_samples[gr], si.mixed_block_flag[gr][ch], ScaleFactorBandsShort[header.sampling_frequency].data());
-            } else {
-                alias_reduce_III(result);
+            f << "gr " << gr << " ch " << ch << std::endl;
+            for (size_t i = 0; i < 32; i++) {
+                for (size_t j = 0; j < 18; j++) {
+                    //f << result.requantized_samples[ch][gr][i * 18 + j] << ", ";
+                    f << std::round(result.requantized_samples[ch][gr][i * 18 + j] * 100000000)/100000000.0 << ", ";
+                }
+                f << std::endl;
             }
+            f << std::endl;
 
+            if (si.block_type[gr][ch] == 2) {
+                reorder_III(result.requantized_samples[ch][gr], si.mixed_block_flag[gr][ch], ScaleFactorBandsShort[header.sampling_frequency].data());
+            } else {
+                alias_reduce_III(result, ch, gr);
+            }
+        }
+        stereo_III(header, result, gr, si);
+    }
+
+    for (size_t gr = 0; gr < 2; gr++) {
+        for (size_t ch = 0; ch < channels; ch++) {
             for (size_t i = 0; i < 576; i += 18) {
                 double output[36];
-                imdct_III(&result.requantized_samples[gr][i], output, si.block_type[gr][ch]);
+                imdct_III(&result.requantized_samples[ch][gr][i], output, si.block_type[gr][ch]);
 
                 const int sb = i / 18;
                 for (size_t s = 0; s < 18; s++) {
