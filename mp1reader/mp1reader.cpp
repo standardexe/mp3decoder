@@ -12,6 +12,12 @@
 
 enum class Mode { Stereo, IntensityStereo, DualChannel, SingleChannel };
 
+enum class ModeExtension { Stereo = 0, IntensityStereo = 1, MsStereo = 2 };
+
+bool operator &(ModeExtension m1, ModeExtension m2) {
+    return static_cast<int>(m1) & static_cast<int>(m2);
+}
+
 enum class Emphasis { None, Microseconds_50_15, Reserved, CCITT_J17 };
 
 struct Header {
@@ -23,7 +29,7 @@ struct Header {
     bool padding_bit;
     bool private_bit;
     Mode mode;
-    int mode_extension;
+    ModeExtension mode_extension;
     bool copyright_bit;
     bool original_bit;
     Emphasis emphasis;
@@ -111,7 +117,7 @@ Header read_header(BitStream& bitstream) {
     header.padding_bit          = bitstream.read_bit();
     header.private_bit          = bitstream.read_bit();
     header.mode                 = static_cast<Mode>(bitstream.read_bits(2));
-    header.mode_extension       = bitstream.read_bits(2);
+    header.mode_extension       = static_cast<ModeExtension>(bitstream.read_bits(2));
     header.copyright_bit        = bitstream.read_bit();
     header.original_bit         = bitstream.read_bit();
     header.emphasis             = static_cast<Emphasis>(bitstream.read_bits(2));
@@ -316,7 +322,7 @@ void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
         }
     }
 
-    while (l < 576 && sfbi < 36) {
+    while (l < 576 && sfbi <= 36) {
         for (int i = 0; i < sfb[sfbi].width; i++) {
             tmp[l++] = samples[sfb[sfbi + 0].start + i];
             tmp[l++] = samples[sfb[sfbi + 1].start + i];
@@ -932,7 +938,7 @@ AudioDataI read_audio_data_I(const Header& header, BitStream& bitstream) {
     AudioDataI data;
 
     const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
-    const int bound = header.mode == Mode::IntensityStereo ? table_bounds[header.mode_extension] : 32;
+    const int bound = header.mode == Mode::IntensityStereo ? table_bounds[static_cast<int>(header.mode_extension)] : 32;
 
     loop_over_sb_and_ch(channels, bound, 32, [&](int ch, int sb, bool is_intensity) {
         data.allocations[ch][sb] = table_allocation[bitstream.read_bits(4)];
@@ -1026,10 +1032,10 @@ int main()
 
     auto write_samples = [&channels, &out_samples, &outfile, &sample_count]() {
         for (size_t j = 0; j < 32; j++) {
-            const short sample_l = clamp(32000 * out_samples[0][j]);
+            const short sample_l = clamp(32767 * out_samples[0][j]);
             outfile.write(reinterpret_cast<const char*>(&sample_l), 2);
             if (channels == 2) {
-                const short sample_r = clamp(32000 * out_samples[1][j]);
+                const short sample_r = clamp(32767 * out_samples[1][j]);
                 outfile.write(reinterpret_cast<const char*>(&sample_r), 2);
             }
         }
