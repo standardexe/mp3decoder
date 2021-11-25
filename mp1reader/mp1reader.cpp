@@ -680,7 +680,7 @@ int read_huffman_data_III(const Header& header,
     return count;
 }
 
-int get_first_zero_band(double* samples, ScaleFactorBand* bands, size_t size) {
+int get_last_nonempty_band(double* samples, ScaleFactorBand* bands, size_t size) {
     int last_nonempty_band = 0;
 
     for (size_t i = 0; i < size; i++) {
@@ -709,6 +709,25 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
     ScaleFactorBand* sfbs = nullptr;
     size_t sfbs_length = 0;
 
+    auto process_ms_stereo = [&](const ScaleFactorBand& band) {
+        for (size_t i = band.start; i <= band.end; i++) {
+            const double m = data.requantized_samples[0][gr][i];
+            const double s = data.requantized_samples[1][gr][i];
+            data.requantized_samples[0][gr][i] = (m + s) / SQRT_2;
+            data.requantized_samples[1][gr][i] = (m - s) / SQRT_2;
+        }
+    };
+
+    auto process_intensity_stereo = [&](const ScaleFactorBand& band, double is_ratio) {
+        for (size_t i = band.start; i <= band.end; i++) {
+            double sample_left = data.requantized_samples[0][gr][i];
+            double coeff_l = is_ratio / (1 + is_ratio);
+            double coeff_r = 1 / (1 + is_ratio);
+            data.requantized_samples[0][gr][i] = sample_left * coeff_l;
+            data.requantized_samples[1][gr][i] = sample_left * coeff_r;
+        }
+    };
+
     if (si.block_type[gr][0] == 2) {
         sfbs = ScaleFactorBandsShort[header.sampling_frequency].data();
         sfbs_length = ScaleFactorBandsShort[header.sampling_frequency].size();
@@ -718,7 +737,7 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
     }
 
     if (header.mode_extension & ModeExtension::IntensityStereo) {
-        sfbi_intensity_start = get_first_zero_band(data.requantized_samples[1][gr], sfbs, sfbs_length);
+        sfbi_intensity_start = get_last_nonempty_band(data.requantized_samples[1][gr], sfbs, sfbs_length);
         sfbi_intensity_end = sfbs_length;
     }
 
@@ -728,25 +747,17 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
     }
 
     for (size_t sfbi = sfbi_ms_start; sfbi < sfbi_ms_end; sfbi++) {
-        for (size_t i = sfbs[sfbi].start; i <= sfbs[sfbi].end; i++) {
-            const double m = data.requantized_samples[0][gr][i];
-            const double s = data.requantized_samples[1][gr][i];
-            data.requantized_samples[0][gr][i] = (m + s) / SQRT_2;
-            data.requantized_samples[1][gr][i] = (m - s) / SQRT_2;
-        }
+        process_ms_stereo(sfbs[sfbi]);
     }
 
     for (size_t sfbi = sfbi_intensity_start; sfbi < sfbi_intensity_end; sfbi++) {
-        auto is_pos = si.scalefac_l[1][sfbi];
-        if (is_pos >= 7) continue;
-        double is_ratio = tan(is_pos * M_PI / 12);
-        for (size_t i = sfbs[sfbi].start; i <= sfbs[sfbi].end; i++) {
-            double sample_left = data.requantized_samples[0][gr][i];
-            double coeff_l = is_ratio / (1 + is_ratio);
-            double coeff_r = 1 / (1 + is_ratio);
-            data.requantized_samples[0][gr][i] = sample_left * coeff_l;
-            data.requantized_samples[1][gr][i] = sample_left * coeff_r;
+        int is_pos = si.scalefac_l[1][sfbi];
+        if (is_pos == 7) {
+            if (header.mode_extension & ModeExtension::MsStereo) process_ms_stereo(sfbs[sfbi]);
+            continue;
         }
+        double is_ratio = tan(is_pos * M_PI / 12);
+        process_intensity_stereo(sfbs[sfbi], is_ratio);
     }
 }
 
@@ -1046,8 +1057,7 @@ int main()
             continue;
         }
 
-        // What exactly is header.id == 1? It's supposed to be reserved, but Lame may use it.
-        if ((header.id != 3 && header.id != 1)) {
+        if (header.id != 1) {
             std::cout << "ERRROR: LOST SYNC!" << std::endl;
             continue;
         }
