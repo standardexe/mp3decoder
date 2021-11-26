@@ -318,12 +318,16 @@ void exponents_III(const Header& header, const layer_III_sideinfo& si, int gr, i
     }
 }
 
-void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
+void reorder_III(double samples[576], const Header& header, const layer_III_sideinfo& si, int gr, int ch) {
     size_t sfbi = 0;
     size_t l = 0;
     double tmp[576] = {};
 
-    if (mixed_mode) {
+    ScaleFactorBand* sfb = si.mixed_block_flag[gr][ch] ?
+                                ScaleFactorBandsMixed[header.sampling_frequency].data() :
+                                ScaleFactorBandsShort[header.sampling_frequency].data();
+
+    if (si.mixed_block_flag[gr][ch]) {
         while (l < 36) {
             for (int i = 0; i < sfb[sfbi].width; i++) {
                 tmp[l++] = samples[l];
@@ -771,7 +775,6 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
 
         if (si.main_data_begin > 0) {
             // If this is the first frame (e.g. after a seek), we can't look back in the stream.
-            // Otherwise we would decode garbage.
             if (first_frame) return result;
             reservoir.seek_relative(-si.main_data_begin);
         }
@@ -785,11 +788,7 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
             read_huffman_data_III(header, si, reservoir, gr, ch, result, scale_factors_size);
 
             if (si.block_type[gr][ch] == 2) {
-                reorder_III(result.requantized_samples[ch][gr],
-                            si.mixed_block_flag[gr][ch],
-                            si.mixed_block_flag[gr][ch] ?
-                                ScaleFactorBandsMixed[header.sampling_frequency].data() :
-                                ScaleFactorBandsShort[header.sampling_frequency].data());
+                reorder_III(result.requantized_samples[ch][gr], header, si, gr, ch);
 
                 // Only reduce alias for lowest 2 bands as they're long.
                 // Afaik this is not mentioned in the ISO spec, but it is addressed in the
