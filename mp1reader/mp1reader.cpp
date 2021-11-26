@@ -55,8 +55,7 @@ struct layer_III_sideinfo {
     int preflag[2][2] = {};
     int scalefac_scale[2][2] = {};
     int count1table_select[2][2] = {};
-    int scalefac_l[2][21] = {};
-    int scalefac_s[2][39] = {};
+    int scalefac[2][39] = {};
 };
 
 struct AudioDataI {
@@ -277,7 +276,7 @@ void exponents_III(const Header& header, const layer_III_sideinfo& si, int gr, i
     if (si.block_type[gr][ch] != 2) {
         ScaleFactorBand* sfb = ScaleFactorBandsLong[header.sampling_frequency].data();
         for (size_t sfbi = 0; sfbi < 22; sfbi++) {
-            double exponent = gain/4.0 - (scalefac_multiplier * (si.scalefac_l[ch][sfbi] + si.preflag[gr][ch] * layer_III_pretab[sfbi]));
+            double exponent = gain/4.0 - (scalefac_multiplier * (si.scalefac[ch][sfbi] + si.preflag[gr][ch] * layer_III_pretab[sfbi]));
             fill_band(pow(2, exponent), sfb[sfbi].start, sfb[sfbi].end);
         }
     } else {
@@ -288,7 +287,7 @@ void exponents_III(const Header& header, const layer_III_sideinfo& si, int gr, i
         if (si.mixed_block_flag[gr][ch]) {
             sfb = ScaleFactorBandsMixed[header.sampling_frequency].data();
             while (l < 36) {
-                double exponent = gain/4.0 - (scalefac_multiplier * (si.scalefac_l[ch][sfbi] + si.preflag[gr][ch] * layer_III_pretab[sfbi]));
+                double exponent = gain/4.0 - (scalefac_multiplier * (si.scalefac[ch][sfbi] + si.preflag[gr][ch] * layer_III_pretab[sfbi]));
                 fill_band(pow(2, exponent), sfb[sfbi].start, sfb[sfbi].end);
                 l += sfb[sfbi++].width;
             }
@@ -299,9 +298,9 @@ void exponents_III(const Header& header, const layer_III_sideinfo& si, int gr, i
         double gain2 = (gain - 8 * si.sub_block_gain[gr][ch][2])/4.0;
 
         while (l < 576 && sfbi < 39) {
-            double exponent0 = gain0 - (scalefac_multiplier * si.scalefac_s[ch][sfbi + 0]);
-            double exponent1 = gain1 - (scalefac_multiplier * si.scalefac_s[ch][sfbi + 1]);
-            double exponent2 = gain2 - (scalefac_multiplier * si.scalefac_s[ch][sfbi + 2]);
+            double exponent0 = gain0 - (scalefac_multiplier * si.scalefac[ch][sfbi + 0]);
+            double exponent1 = gain1 - (scalefac_multiplier * si.scalefac[ch][sfbi + 1]);
+            double exponent2 = gain2 - (scalefac_multiplier * si.scalefac[ch][sfbi + 2]);
 
             fill_band(pow(2, exponent0), sfb[sfbi + 0].start, sfb[sfbi + 0].end);
             l += sfb[sfbi + 0].width;
@@ -467,26 +466,27 @@ void read_side_info_III(const Header& header, layer_III_sideinfo& si, BitStream&
 }
 
 void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBitStream& reservoir, int gr, int ch) {
+    size_t sfb = 0;
     if (si.window_switching_flag[gr][ch] == 1 && si.block_type[gr][ch] == 2) {
         if (si.mixed_block_flag[gr][ch]) {
-            for (size_t sfb = 0; sfb < 8; sfb++) {
+            for (size_t i = 0; i < 8; i++) {
                 const int bits = layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]];
-                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac[ch][sfb++] = reservoir.read_bits(bits);
             }
-            for (size_t sfb = 3; sfb < 12; sfb++) {
-                const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
-                                            layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
-                si.scalefac_s[ch][3 * sfb + 0] = reservoir.read_bits(bits);
-                si.scalefac_s[ch][3 * sfb + 1] = reservoir.read_bits(bits);
-                si.scalefac_s[ch][3 * sfb + 2] = reservoir.read_bits(bits); 
+            for (size_t i = 3; i < 12; i++) {
+                const int bits = i <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
+                                          layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
+                si.scalefac[ch][sfb++] = reservoir.read_bits(bits);
+                si.scalefac[ch][sfb++] = reservoir.read_bits(bits);
+                si.scalefac[ch][sfb++] = reservoir.read_bits(bits); 
             }
         } else {
-            for (size_t sfb = 0; sfb < 12; sfb++) {
-                const int bits = sfb <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
-                                            layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
-                si.scalefac_s[ch][3 * sfb + 0] = reservoir.read_bits(bits);
-                si.scalefac_s[ch][3 * sfb + 1] = reservoir.read_bits(bits);
-                si.scalefac_s[ch][3 * sfb + 2] = reservoir.read_bits(bits); 
+            for (size_t i = 0; i < 12; i++) {
+                const int bits = i <= 5 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]] :
+                                          layer_III_scalefac_compress_slen2[si.scalefac_compress[gr][ch]];
+                si.scalefac[ch][sfb++] = reservoir.read_bits(bits);
+                si.scalefac[ch][sfb++] = reservoir.read_bits(bits);
+                si.scalefac[ch][sfb++] = reservoir.read_bits(bits); 
             }
         }
     } else {
@@ -496,30 +496,31 @@ void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBi
         };
 
         if ((si.scfsi[ch][0] == 0) || (gr == 0)) {
-            for (size_t sfb = 0; sfb < 6; sfb++) {
+            for (sfb = 0; sfb < 6; sfb++) {
                 const int bits = scalefactor_bits(sfb);
-                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac[ch][sfb] = reservoir.read_bits(bits);
             }
         }
         if ((si.scfsi[ch][1] == 0) || (gr == 0)) {
-            for (size_t sfb = 6; sfb < 11; sfb++) {
+            for (sfb = 6; sfb < 11; sfb++) {
                 const int bits = scalefactor_bits(sfb);
-                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac[ch][sfb] = reservoir.read_bits(bits);
             }
         }
         if ((si.scfsi[ch][2] == 0) || (gr == 0)) {
-            for (size_t sfb = 11; sfb < 16; sfb++) {
+            for (sfb = 11; sfb < 16; sfb++) {
                 const int bits = scalefactor_bits(sfb);
-                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac[ch][sfb] = reservoir.read_bits(bits);
             }
         }
         if ((si.scfsi[ch][3] == 0) || (gr == 0)) {
-            for (size_t sfb = 16; sfb < 21; sfb++) {
+            for (sfb = 16; sfb < 21; sfb++) {
                 const int bits = scalefactor_bits(sfb);
-                si.scalefac_l[ch][sfb] = reservoir.read_bits(bits);
+                si.scalefac[ch][sfb] = reservoir.read_bits(bits);
             }
         }
     }
+    for (; sfb < 39; sfb++) si.scalefac[ch][sfb] = 0;
 }
 
 int read_huffman_data_III(const Header& header,
@@ -735,7 +736,7 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
     }
 
     for (size_t sfbi = sfbi_intensity_start; sfbi < sfbi_intensity_end; sfbi++) {
-        int is_pos = si.scalefac_l[1][sfbi];
+        int is_pos = si.scalefac[1][sfbi];
         if (is_pos == 7) {
             if (header.mode_extension & ModeExtension::MsStereo) process_ms_stereo(sfbs[sfbi]);
             continue;
@@ -793,6 +794,8 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
                                 ScaleFactorBandsShort[header.sampling_frequency].data());
 
                 // Only reduce alias for lowest 2 bands as they're long.
+                // Afaik this is not mentioned in the ISO spec, but it is addressed in the
+                // changelog for the ISO compliance tests.
                 if (si.mixed_block_flag[gr][ch])
                     alias_reduce_III(result, ch, gr, 36);
             } else {
@@ -1074,7 +1077,6 @@ int main()
             continue;
         }
 
-        
         channels = header.mode == Mode::SingleChannel ? 1 : 2;
         samplerate = header.sampling_frequency;
         std::cout << "Layer " <<
