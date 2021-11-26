@@ -345,8 +345,8 @@ void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
     memcpy(samples, tmp, 576 * sizeof(double));
 }
 
-void alias_reduce_III(AudioDataIII& data, int ch, int gr) {
-    for (size_t sb = 0; sb < 576 - 18; sb += 18) {
+void alias_reduce_III(AudioDataIII& data, int ch, int gr, int max_index = 576) {
+    for (size_t sb = 0; sb < max_index - 18; sb += 18) {
         for (size_t i = 0; i < 8; i++) {
             const int idx1 = sb + 17 - i;
             const int idx2 = sb + 18 + i;
@@ -791,6 +791,10 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
                             si.mixed_block_flag[gr][ch] ?
                                 ScaleFactorBandsMixed[header.sampling_frequency].data() :
                                 ScaleFactorBandsShort[header.sampling_frequency].data());
+
+                // Only reduce alias for lowest 2 bands as they're long.
+                if (si.mixed_block_flag[gr][ch])
+                    alias_reduce_III(result, ch, gr, 36);
             } else {
                 alias_reduce_III(result, ch, gr);
             }
