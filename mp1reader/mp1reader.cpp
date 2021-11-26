@@ -808,8 +808,15 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
     for (size_t gr = 0; gr < 2; gr++) {
         for (size_t ch = 0; ch < channels; ch++) {
             for (size_t i = 0; i < 576; i += 18) {
+                int block_type = si.block_type[gr][ch];
+                if (i < 36 && si.mixed_block_flag[gr][ch]) {
+                    // ISO/IEC 11172-3: if mixed_block_flag is set, the lowest
+                    // two subbands are transformed with normal window.
+                    block_type = 0;
+                }
+
                 double output[36];
-                imdct_III(&result.requantized_samples[ch][gr][i], output, si.block_type[gr][ch]);
+                imdct_III(&result.requantized_samples[ch][gr][i], output, block_type);
 
                 const int sb = i / 18;
                 for (size_t s = 0; s < 18; s++) {
