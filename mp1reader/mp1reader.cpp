@@ -746,7 +746,7 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
     }
 }
 
-AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, RingBitStream& reservoir, double lastValues[2][32][18], bool only_fill_reservoir) {
+AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, RingBitStream& reservoir, double lastValues[2][32][18], bool first_frame) {
     layer_III_sideinfo si;
     const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
 
@@ -759,7 +759,6 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
     // Copy all the remaining data in this frame into the bit reservoir.
     // Append it to the left-over data of the last frame in order to build the
     // complete current frame.
-    // TODO: Maybe early return if there was no previous frame. We would decode garbage otherwise.
     {
         _ASSERT(bitstream.get_current_bit() == 0);
         reservoir.seek_to_end();
@@ -770,11 +769,10 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
             reservoir.write(&data, 1);
         }
 
-        if (only_fill_reservoir) {
-            return result;
-        }
-
         if (si.main_data_begin > 0) {
+            // If this is the first frame (e.g. after a seek), we can't look back in the stream.
+            // Otherwise we would decode garbage.
+            if (first_frame) return result;
             reservoir.seek_relative(-si.main_data_begin);
         }
     }
