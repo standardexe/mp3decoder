@@ -37,6 +37,28 @@ struct Header {
     int frame_size;
 };
 
+struct layer_III_sideinfo {
+    int main_data_begin = {};
+    int private_bits = {};
+    int scfsi[2][4] = {};
+    int part2_3_length[2][2] = {};
+    int big_values[2][2] = {};
+    int global_gain[2][2] = {};
+    int scalefac_compress[2][2] = {};
+    int window_switching_flag[2][2] = {};
+    int block_type[2][2] = {};
+    int mixed_block_flag[2][2] = {};
+    int table_select[2][2][3] = {};
+    int sub_block_gain[2][2][3] = {};
+    int region0_count[2][2] = {};
+    int region1_count[2][2] = {};
+    int preflag[2][2] = {};
+    int scalefac_scale[2][2] = {};
+    int count1table_select[2][2] = {};
+    int scalefac_l[2][21] = {};
+    int scalefac_s[2][39] = {};
+};
+
 struct AudioDataI {
     int allocations[2][32] = {};
     int levels[2][32] = {};
@@ -242,54 +264,44 @@ double requantize_III(int sample, double exponent) {
     return result;
 }
 
-void exponents_III(
-    const Header& header, 
-    const bool mixed_mode, 
-    const bool has_preflag, 
-    const bool scalefac_scale, 
-    const int block_type, 
-    const int global_gain, 
-    const int *subblock_gain, 
-    const int scalefac_l[22], 
-    const int scalefac_s[39], 
-    const ScaleFactorBand *sfb, 
-    double exp[576]) {
-    
+void exponents_III(const Header& header, const layer_III_sideinfo& si, int gr, int ch, double exp[576]) {
     auto fill_band = [exp](double exponent, int start, int end) {
         for (int j = start; j <= end && j < 576; j++) {
             exp[j] = exponent;
         }
     };
 
-    double scalefac_multiplier = scalefac_scale ? 1 : 0.5;
-    int gain = global_gain - 210;
+    double scalefac_multiplier = si.scalefac_scale[gr][ch] ? 1 : 0.5;
+    int gain = si.global_gain[gr][ch] - 210;
 
-    if (block_type != 2) {
+    if (si.block_type[gr][ch] != 2) {
+        ScaleFactorBand* sfb = ScaleFactorBandsLong[header.sampling_frequency].data();
         for (size_t sfbi = 0; sfbi < 22; sfbi++) {
-            double exponent = gain/4.0 - (scalefac_multiplier * (scalefac_l[sfbi] + has_preflag * layer_III_pretab[sfbi]));
+            double exponent = gain/4.0 - (scalefac_multiplier * (si.scalefac_l[ch][sfbi] + si.preflag[gr][ch] * layer_III_pretab[sfbi]));
             fill_band(pow(2, exponent), sfb[sfbi].start, sfb[sfbi].end);
         }
     } else {
+        ScaleFactorBand* sfb = ScaleFactorBandsShort[header.sampling_frequency].data();
         size_t sfbi = 0;
         size_t l = 0;
 
-        if (mixed_mode) {
-            // TODO: need mixed mode short scale factor band lists
+        if (si.mixed_block_flag[gr][ch]) {
+            sfb = ScaleFactorBandsMixed[header.sampling_frequency].data();
             while (l < 36) {
-                int exponent = gain - (scalefac_multiplier * (scalefac_l[sfbi] + has_preflag * layer_III_pretab[sfbi]));
+                double exponent = gain/4.0 - (scalefac_multiplier * (si.scalefac_l[ch][sfbi] + si.preflag[gr][ch] * layer_III_pretab[sfbi]));
                 fill_band(pow(2, exponent), sfb[sfbi].start, sfb[sfbi].end);
                 l += sfb[sfbi++].width;
             }
         }
 
-        double gain0 = (gain - 8 * subblock_gain[0])/4.0;
-        double gain1 = (gain - 8 * subblock_gain[1])/4.0;
-        double gain2 = (gain - 8 * subblock_gain[2])/4.0;
+        double gain0 = (gain - 8 * si.sub_block_gain[gr][ch][0])/4.0;
+        double gain1 = (gain - 8 * si.sub_block_gain[gr][ch][1])/4.0;
+        double gain2 = (gain - 8 * si.sub_block_gain[gr][ch][2])/4.0;
 
         while (l < 576 && sfbi < 39) {
-            double exponent0 = gain0 - (scalefac_multiplier * scalefac_s[sfbi + 0]);
-            double exponent1 = gain1 - (scalefac_multiplier * scalefac_s[sfbi + 1]);
-            double exponent2 = gain2 - (scalefac_multiplier * scalefac_s[sfbi + 2]);
+            double exponent0 = gain0 - (scalefac_multiplier * si.scalefac_s[ch][sfbi + 0]);
+            double exponent1 = gain1 - (scalefac_multiplier * si.scalefac_s[ch][sfbi + 1]);
+            double exponent2 = gain2 - (scalefac_multiplier * si.scalefac_s[ch][sfbi + 2]);
 
             fill_band(pow(2, exponent0), sfb[sfbi + 0].start, sfb[sfbi + 0].end);
             l += sfb[sfbi + 0].width;
@@ -409,28 +421,6 @@ void imdct_III(double input[18], double output[36], int block_type) {
     }
 }
 
-struct layer_III_sideinfo {
-    int main_data_begin = {};
-    int private_bits = {};
-    int scfsi[2][4] = {};
-    int part2_3_length[2][2] = {};
-    int big_values[2][2] = {};
-    int global_gain[2][2] = {};
-    int scalefac_compress[2][2] = {};
-    int window_switching_flag[2][2] = {};
-    int block_type[2][2] = {};
-    int mixed_block_flag[2][2] = {};
-    int table_select[2][2][3] = {};
-    int sub_block_gain[2][2][3] = {};
-    int region0_count[2][2] = {};
-    int region1_count[2][2] = {};
-    int preflag[2][2] = {};
-    int scalefac_scale[2][2] = {};
-    int count1table_select[2][2] = {};
-    int scalefac_l[2][21] = {};
-    int scalefac_s[2][39] = {};
-};
-
 void read_side_info_III(const Header& header, layer_III_sideinfo& si, BitStream& bitstream) {
     const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
 
@@ -541,19 +531,8 @@ int read_huffman_data_III(const Header& header,
                           int granule_bits_read) {
 
     double exponents[576] = {};
-    exponents_III(
-        header,
-        si.mixed_block_flag[gr][ch],
-        si.preflag[gr][ch],
-        si.scalefac_scale[gr][ch],
-        si.block_type[gr][ch],
-        si.global_gain[gr][ch],
-        si.sub_block_gain[gr][ch],
-        si.scalefac_l[ch],
-        si.scalefac_s[ch],
-        si.block_type[gr][ch] == 2 ? ScaleFactorBandsShort[header.sampling_frequency].data() :
-                                     ScaleFactorBandsLong[header.sampling_frequency].data(),
-        exponents);
+
+    exponents_III(header, si, gr, ch, exponents);
 
     int count = 0;
     int scaleFactorBandIndex1 = si.region0_count[gr][ch] + 1;
