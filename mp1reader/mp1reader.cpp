@@ -736,14 +736,15 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
         sfbs_length = ScaleFactorBandsLong[header.sampling_frequency].size();
     }
 
+    if (header.mode_extension & ModeExtension::MsStereo) {
+        sfbi_ms_start = 0;
+        sfbi_ms_end = sfbs_length;
+    }
+
     if (header.mode_extension & ModeExtension::IntensityStereo) {
         sfbi_intensity_start = get_last_nonempty_band(data.requantized_samples[1][gr], sfbs, sfbs_length);
         sfbi_intensity_end = sfbs_length;
-    }
-
-    if (header.mode_extension & ModeExtension::MsStereo) {
-        sfbi_ms_start = 0;
-        sfbi_ms_end = (header.mode_extension & ModeExtension::IntensityStereo) ? sfbi_intensity_start : sfbs_length;
+        sfbi_ms_end = sfbi_intensity_start;
     }
 
     for (size_t sfbi = sfbi_ms_start; sfbi < sfbi_ms_end; sfbi++) {
@@ -772,11 +773,13 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
     // Copy all the remaining data in this frame into the bit reservoir.
     // Append it to the left-over data of the last frame in order to build the
     // complete current frame.
+    // TODO: Maybe early return if there was no previous frame. We would decode garbage otherwise.
     {
         _ASSERT(bitstream.get_current_bit() == 0);
         reservoir.seek_to_end();
 
-        for (size_t i = (channels == 2 ? 32 : 17) + (header.protection_bit ? 0 : 2) + 4; i < header.frame_size; i++) {
+        size_t frame_data_slots = header.frame_size - ((channels == 2 ? 32 : 17) + (header.protection_bit ? 0 : 2) + 4);
+        for (size_t i = 0; i < frame_data_slots; i++) {
             unsigned char data = bitstream.read_bits<unsigned char>(8);
             reservoir.write(&data, 1);
         }
@@ -790,9 +793,10 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
 
     for (size_t gr = 0; gr < 2; gr++) {
         for (size_t ch = 0; ch < channels; ch++) {
-            const int current_position = reservoir.position();
+            const size_t position_before_scale_factors = reservoir.position();
             read_scale_factors_III(header, si, reservoir, gr, ch);
-            read_huffman_data_III(header, si, reservoir, gr, ch, result, reservoir.position() - current_position);
+            const size_t scale_factors_size = reservoir.position() - position_before_scale_factors;
+            read_huffman_data_III(header, si, reservoir, gr, ch, result, scale_factors_size);
 
             if (si.block_type[gr][ch] == 2) {
                 reorder_III(result.requantized_samples[ch][gr], si.mixed_block_flag[gr][ch], ScaleFactorBandsShort[header.sampling_frequency].data());
