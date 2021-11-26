@@ -325,12 +325,11 @@ void reorder_III(double samples[576], bool mixed_mode, ScaleFactorBand* sfb) {
     double tmp[576] = {};
 
     if (mixed_mode) {
-        // TODO: need mixed mode short scale factor band lists
         while (l < 36) {
             for (int i = 0; i < sfb[sfbi].width; i++) {
-                tmp[l] = samples[l];
+                tmp[l++] = samples[l];
             }
-            l += sfb[sfbi++].width;
+            sfbi++;
         }
     }
 
@@ -707,9 +706,14 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
         }
     };
 
-    if (si.block_type[gr][0] == 2) {
-        sfbs = ScaleFactorBandsShort[header.sampling_frequency].data();
-        sfbs_length = ScaleFactorBandsShort[header.sampling_frequency].size();
+    if (si.block_type[gr][1] == 2) {
+        if (si.mixed_block_flag[gr][1]) {
+            sfbs = ScaleFactorBandsShort[header.sampling_frequency].data();
+            sfbs_length = ScaleFactorBandsShort[header.sampling_frequency].size();
+        } else {
+            sfbs = ScaleFactorBandsMixed[header.sampling_frequency].data();
+            sfbs_length = ScaleFactorBandsMixed[header.sampling_frequency].size();
+        }
     } else {
         sfbs = ScaleFactorBandsLong[header.sampling_frequency].data();
         sfbs_length = ScaleFactorBandsLong[header.sampling_frequency].size();
@@ -741,13 +745,15 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
     }
 }
 
-AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, RingBitStream& reservoir, double lastValues[2][32][18]) {
+AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, RingBitStream& reservoir, double lastValues[2][32][18], bool only_fill_reservoir) {
     layer_III_sideinfo si;
     const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
 
     read_side_info_III(header, si, bitstream);
 
     std::cout << "Gr0 bt " << si.block_type[0][0] << ", Gr1 bt " << si.block_type[1][0] << std::endl;
+
+    AudioDataIII result;
 
     // Copy all the remaining data in this frame into the bit reservoir.
     // Append it to the left-over data of the last frame in order to build the
@@ -763,12 +769,14 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
             reservoir.write(&data, 1);
         }
 
+        if (only_fill_reservoir) {
+            return result;
+        }
+
         if (si.main_data_begin > 0) {
             reservoir.seek_relative(-si.main_data_begin);
         }
     }
-
-    AudioDataIII result;
 
     for (size_t gr = 0; gr < 2; gr++) {
         for (size_t ch = 0; ch < channels; ch++) {
@@ -778,7 +786,11 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
             read_huffman_data_III(header, si, reservoir, gr, ch, result, scale_factors_size);
 
             if (si.block_type[gr][ch] == 2) {
-                reorder_III(result.requantized_samples[ch][gr], si.mixed_block_flag[gr][ch], ScaleFactorBandsShort[header.sampling_frequency].data());
+                reorder_III(result.requantized_samples[ch][gr],
+                            si.mixed_block_flag[gr][ch],
+                            si.mixed_block_flag[gr][ch] ?
+                                ScaleFactorBandsMixed[header.sampling_frequency].data() :
+                                ScaleFactorBandsShort[header.sampling_frequency].data());
             } else {
                 alias_reduce_III(result, ch, gr);
             }
@@ -1084,7 +1096,7 @@ int main()
                 write_samples();
             }
         } else if (header.layer == 3) {
-            AudioDataIII audioData = read_audio_data_III(header, bitstream, reservoir, lastValues);
+            AudioDataIII audioData = read_audio_data_III(header, bitstream, reservoir, lastValues, frameCount == 1);
 
             for (size_t gr = 0; gr < 2; gr++) {
                 for (size_t i = 0; i < 18; i++) {

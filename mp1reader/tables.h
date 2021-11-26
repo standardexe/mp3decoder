@@ -834,9 +834,9 @@ struct ScaleFactorBand {
 };
 
 template<size_t N>
-constexpr std::array<ScaleFactorBand, 3*N> MakeShortScaleFactorBandArray(std::array<size_t, N> sizes) {
+constexpr std::array<ScaleFactorBand, 3*N> MakeShortScaleFactorBandArray(std::array<size_t, N> sizes, size_t offset = 0) {
     std::array<ScaleFactorBand, 3*N> result;
-    size_t start = 0;
+    size_t start = offset;
 
     for (size_t i = 0; i < N; i++) {
         result[3 * i + 0] = { sizes[i], start, start + sizes[i] - 1 };
@@ -861,7 +861,28 @@ constexpr std::array<ScaleFactorBand, N> MakeLongScaleFactorBandArray(std::array
     }
 
     return result;
+}
 
+template<size_t N, size_t N2, size_t N3>
+constexpr std::array<ScaleFactorBand, N> MakeMixedScaleFactorBandArray(std::array<size_t, N2> sizes_long, std::array<size_t, N3> sizes_short) {
+    std::array<ScaleFactorBand, N> result;
+
+    auto long_bands = MakeLongScaleFactorBandArray<N2>(sizes_long);
+    auto short_bands = MakeShortScaleFactorBandArray<N3>(sizes_short, long_bands.back().end + 1);
+
+    for (int i = 0; i < long_bands.size(); i++) {
+        result[i] = long_bands[i];
+    }
+
+    for (int i = 0; i < short_bands.size(); i++) {
+        result[i + long_bands.size()] = short_bands[i];
+    }
+
+    for (int i = long_bands.size() + short_bands.size(); i < N; i++) {
+        result[i] = { 0, 576, 576 };
+    }
+
+    return result;
 }
 
 std::map< int, std::array<ScaleFactorBand, 39> > ScaleFactorBandsShort = {
@@ -876,6 +897,21 @@ std::map< int, std::array<ScaleFactorBand, 39> > ScaleFactorBandsShort = {
     {
         48000,
         MakeShortScaleFactorBandArray<13>({{ 4, 4, 4, 4, 6, 6, 10, 12, 14, 16, 20, 26, 66 }})
+    }
+};
+
+std::map< int, std::array<ScaleFactorBand, 39> > ScaleFactorBandsMixed = {
+    {
+        32000,
+        MakeMixedScaleFactorBandArray<39, 8, 10>({{ 4,  4,  4,  4,  4,  4,  6,  6 }}, {{ 4, 6, 8, 12, 16, 20, 26, 34, 42, 12 }})
+    },
+    {
+        44100,
+        MakeMixedScaleFactorBandArray<39, 8, 10>({{ 4,  4,  4,  4,  4,  4,  6,  6 }}, {{ 4, 6, 8, 10, 12, 14, 18, 22, 30, 56 }})
+    },
+    {
+        48000,
+        MakeMixedScaleFactorBandArray<39, 8, 10>({{ 4,  4,  4,  4,  4,  4,  6,  6 }}, {{ 4, 6, 6, 10, 12, 14, 16, 20, 26, 66 }})
     }
 };
 
