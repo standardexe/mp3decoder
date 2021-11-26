@@ -1,14 +1,10 @@
 #include <iostream>
 #include <fstream>
-#include <vector>
 #include <cmath>
-#include <functional>
 
 #include "bitstream.h"
 #include "tables.h"
 #include "wav.h"
-
-#define NOT_IMPLEMENTED() do { throw std::exception("not implemented"); } while(false);
 
 enum class Mode { Stereo, JointStereo, DualChannel, SingleChannel };
 
@@ -58,22 +54,6 @@ struct layer_III_sideinfo {
     int scalefac[2][39] = {};
 };
 
-struct AudioDataI {
-    int allocations[2][32] = {};
-    int levels[2][32] = {};
-    int scale_factors[2][32] = {};
-    int samples[2][32][12] = {};
-    float requantized_samples[2][32][12] = {};
-};
-
-struct AudioDataII {
-    int allocations[2][32] = {};
-    int scfsi[2][32] = {};
-    float scale_factors[2][32][3] = {};
-    int samples[2][32][36] = {};
-    float requantized_samples[2][32][36] = {};
-};
-
 struct AudioDataIII {
     int samples[2][2][576] = {};
     double requantized_samples[2][2][576] = {};
@@ -82,15 +62,6 @@ struct AudioDataIII {
 
 float V1[1024] = {};
 float V2[1024] = {};
-
-size_t left_most_bit_index(int value) {
-    size_t counter = 0;
-    while (value > 0) {
-        value >>= 1;
-        ++counter;
-    }
-    return counter;
-}
 
 bool synchronize(BitStream& buffer) {
     size_t one_counter = 0;
@@ -101,31 +72,6 @@ bool synchronize(BitStream& buffer) {
         if (!bit) buffer.go_to_next_byte();
     }
     return true;
-}
-
-float requantize_II(int raw_sample, int num_bits, int quant_index) {
-    const int max_value = 1 << (num_bits - 1);
-    const int bit_mask = max_value - 1;
-
-    float fraction = (raw_sample & bit_mask) / static_cast<float>(max_value);
-    if (!(raw_sample & max_value)) fraction += -1;
-
-    return layer_II_quantization_class_C[quant_index] * (fraction + layer_II_quantization_class_D[quant_index]);
-}
-
-float requantize_I(int raw_sample, int num_bits) {
-    const int max_value = 1 << (num_bits - 1);
-    const int bit_mask = max_value - 1;
-    const float residue = 1.0f / max_value;
-
-    float fraction = (raw_sample & bit_mask) / static_cast<float>(max_value) + residue;
-    if (!(raw_sample & max_value)) fraction += -1;
-
-    const float a = 1 << num_bits;
-    const float b = (1 << num_bits) - 1;
-    const float scalar = a / b;
-
-    return scalar * fraction;
 }
 
 Header read_header(BitStream& bitstream) {
@@ -146,59 +92,6 @@ Header read_header(BitStream& bitstream) {
         header.crc16            = bitstream.read_bits<unsigned short>(16);
     header.frame_size           = 144 * header.bitrate * 1000 / header.sampling_frequency + header.padding_bit;
     return header;
-}
-
-struct layer_II_quantization_table_info {
-    int (*table)[32][16];
-    int (*nbal)[32];
-    int sblimit;
-};
-
-layer_II_quantization_table_info layer_II_get_quantization_table(const Header& header) {
-    switch (header.sampling_frequency) {
-    case 48000:
-        switch (header.bitrate) {
-        case 56: case 64: case 80: case 96: case 112: case 128: case 160: case 192:
-            return { &layer_II_quantizations_a, &layer_II_quantizations_a_nbal, layer_II_quantizations_a_sblimit };
-        case 32: case 48:
-            return { &layer_II_quantizations_c, &layer_II_quantizations_c_nbal, layer_II_quantizations_c_sblimit };
-        }
-        break;
-    case 44100:
-        switch (header.bitrate) {
-        case 56: case 64: case 80:
-            return { &layer_II_quantizations_a, &layer_II_quantizations_a_nbal, layer_II_quantizations_a_sblimit };
-        case 96: case 112: case 128: case 160: case 192:
-            return { &layer_II_quantizations_b, &layer_II_quantizations_b_nbal, layer_II_quantizations_b_sblimit };
-        case 32: case 48:
-            return { &layer_II_quantizations_c, &layer_II_quantizations_c_nbal, layer_II_quantizations_c_sblimit };
-        }
-    case 32000:
-        switch (header.bitrate) {
-        case 56: case 64: case 80:
-            return { &layer_II_quantizations_a, &layer_II_quantizations_a_nbal, layer_II_quantizations_a_sblimit };
-        case 96: case 112: case 128: case 160: case 192:
-            return { &layer_II_quantizations_b, &layer_II_quantizations_b_nbal, layer_II_quantizations_b_sblimit };
-        case 32: case 48:
-            return { &layer_II_quantizations_d, &layer_II_quantizations_d_nbal, layer_II_quantizations_d_sblimit };
-        }
-    default:
-        break;
-    }
-
-    throw std::exception();
-}
-
-void loop_over_sb_and_ch(int channels, int bound, int bound_limit, std::function<void(int ch, int sb, bool is_intensity)> f) {
-    for (size_t sb = 0; sb < bound; sb++) {
-        for (size_t ch = 0; ch < channels; ch++) {
-            f(ch, sb, false);
-        }
-    }
-
-    for (size_t sb = bound; sb < bound_limit; sb++) {
-        f(0, sb, true);
-    }
 }
 
 const HuffmanEntry4& huffman_decode(RingBitStream& bitstream, const HuffmanEntry4* table, int size) {
@@ -834,134 +727,6 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
     return result;
 }
 
-AudioDataII read_audio_data_II(const Header& header, BitStream& bitstream) {
-    AudioDataII data;
-
-    auto quantization_info = layer_II_get_quantization_table(header);
-
-    const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
-    const int sblimit = quantization_info.sblimit;
-    const int bound = sblimit; // TODO: for Joint Stereo this is not true
-
-    loop_over_sb_and_ch(channels, bound, sblimit, [&](int ch, int sb, bool is_intensity) {
-        const int al = bitstream.read_bits((*quantization_info.nbal)[sb]);
-        data.allocations[ch][sb] = (*quantization_info.table)[sb][al];
-        if (is_intensity) data.allocations[1][sb] = data.allocations[0][sb];
-    });
-
-    loop_over_sb_and_ch(channels, sblimit, sblimit, [&](int ch, int sb, bool is_intensity) {
-        if (data.allocations[ch][sb] == 0) return;
-        data.scfsi[ch][sb] = bitstream.read_bits(2);
-    });
-
-    loop_over_sb_and_ch(channels, sblimit, sblimit, [&](int ch, int sb, bool is_intensity) {
-        if (data.allocations[ch][sb] == 0) return;
-        switch (data.scfsi[ch][sb]) {
-        case 0:
-            data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
-            data.scale_factors[ch][sb][1] = table_scale_factors[bitstream.read_bits(6)];
-            data.scale_factors[ch][sb][2] = table_scale_factors[bitstream.read_bits(6)];
-            break;
-        case 2:
-            data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
-            data.scale_factors[ch][sb][1] = data.scale_factors[ch][sb][0];
-            data.scale_factors[ch][sb][2] = data.scale_factors[ch][sb][0];
-            break;
-        case 1:
-            data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
-            data.scale_factors[ch][sb][1] = data.scale_factors[ch][sb][0];
-            data.scale_factors[ch][sb][2] = table_scale_factors[bitstream.read_bits(6)];
-            break;
-        case 3:
-            data.scale_factors[ch][sb][0] = table_scale_factors[bitstream.read_bits(6)];
-            data.scale_factors[ch][sb][1] = table_scale_factors[bitstream.read_bits(6)];
-            data.scale_factors[ch][sb][2] = data.scale_factors[ch][sb][1];
-            break;
-        }
-    });
-
-    // TODO: Theres probably a smarter way to do this
-    auto quantization_class_index = [](int value) -> int {
-        for (size_t i = 0; i < 17; i++) {
-            if (layer_II_quantization_class_num_steps[i] == value) {
-                return i;
-            }
-        }
-        throw std::exception();
-    };
-
-    for (size_t gr = 0; gr < 12; gr++) {
-        loop_over_sb_and_ch(channels, bound, sblimit, [&](int ch, int sb, bool is_intensity) {
-            if (data.allocations[ch][sb] == 0) return;
-
-            const int quant_index = quantization_class_index(data.allocations[ch][sb]);
-            const int code_width = layer_II_quantization_class_bits_per_cw[quant_index];
-
-            if (layer_II_quantization_class_group[quant_index]) {
-                const int nlevels = data.allocations[ch][sb];
-                const size_t sample_code_highest_bit_index = left_most_bit_index(nlevels);
-
-                int sample_code = bitstream.read_bits(code_width);
-
-                for (size_t i = 0; i < 3; i++) {
-                    data.samples[ch][sb][3 * gr + i] = sample_code % nlevels;
-                    sample_code = sample_code / nlevels;
-
-                    const float scale_factor = data.scale_factors[ch][sb][gr / 4];
-                    const int sample = data.samples[ch][sb][3 * gr + i];
-                    const float requantized = requantize_II(sample, sample_code_highest_bit_index, quant_index);
-
-                    data.requantized_samples[ch][sb][3 * gr + i] = scale_factor * requantized;
-                    if (is_intensity) data.requantized_samples[1][sb][3 * gr + i] = data.requantized_samples[0][sb][3 * gr + i];
-                }
-            } else {
-                for (size_t s = 0; s < 3; s++) {
-                    data.samples[ch][sb][3 * gr + s] = bitstream.read_bits(code_width);
-
-                    const float scale_factor = data.scale_factors[ch][sb][gr / 4];
-                    const int sample = data.samples[ch][sb][3 * gr + s];
-                    const float requantized = requantize_II(sample, code_width, quant_index);
-
-                    data.requantized_samples[ch][sb][3 * gr + s] = scale_factor * requantized;
-                    if (is_intensity) data.requantized_samples[1][sb][3 * gr + s] = data.requantized_samples[0][sb][3 * gr + s];
-                }
-            }
-        });
-    }
-
-    return data;
-}
-
-AudioDataI read_audio_data_I(const Header& header, BitStream& bitstream) {
-    AudioDataI data;
-
-    const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
-    const int bound = header.mode == Mode::JointStereo ? table_bounds[static_cast<int>(header.mode_extension)] : 32;
-
-    loop_over_sb_and_ch(channels, bound, 32, [&](int ch, int sb, bool is_intensity) {
-        data.allocations[ch][sb] = table_allocation[bitstream.read_bits(4)];
-        if (is_intensity) data.allocations[1][sb] = data.allocations[0][sb];
-    });
-
-    loop_over_sb_and_ch(channels, 32, 32, [&](int ch, int sb, bool is_intensity) {
-        if (data.allocations[ch][sb] == 0) return;
-        data.scale_factors[ch][sb] = bitstream.read_bits(6);
-    });
-
-    for (size_t s = 0; s < 12; s++) {
-        loop_over_sb_and_ch(channels, bound, 32, [&](int ch, int sb, bool is_intensity) {
-            if (data.allocations[ch][sb] == 0) return;
-            const int num_bits = data.allocations[ch][sb];
-            const float scale_factor = table_scale_factors[data.scale_factors[ch][sb]];
-            data.samples[ch][sb][s] = bitstream.read_bits(num_bits);
-            data.requantized_samples[ch][sb][s] = scale_factor * requantize_I(data.samples[ch][sb][s], num_bits);
-            if (is_intensity) data.requantized_samples[1][sb][s] = data.requantized_samples[0][sb][s];
-        });
-    }
-
-    return data;
-}
-
 // ISO/IEC 11172-3 (Figure A.2)
 void synthesis(float *V, float samples[32], float result[32]) {
     for (size_t i = 1023; i >= 64; i--) {
@@ -1044,7 +809,6 @@ int main()
     double lastValues[2][32][18] = {};
     int frameCount = 0;
     int samplerate = 0;
-    int lastLayer = -1;
 
     while (!bitstream.eof()) {
         if (!synchronize(bitstream)) {
@@ -1064,12 +828,12 @@ int main()
         }
 
         if (header.id != 1) {
-            std::cout << "ERRROR: LOST SYNC!" << std::endl;
+            std::cout << "ERRROR: Lost Sync!" << std::endl;
             continue;
         }
 
-        if (header.layer != lastLayer && lastLayer != -1) {
-            std::cout << "ERROR: WRONG LAYER NUMBER!" << std::endl;
+        if (header.layer != 3) {
+            std::cout << "ERROR: Only supporting layer 3! This is a layer " << header.layer << " frame." << std::endl;
             bitstream.go_to_byte(bitstream.get_current_byte() - 2);
             continue;
         }
@@ -1085,46 +849,20 @@ int main()
             " (" << frameCount << ")" << std::endl;
 
         ++frameCount;
-        if (header.layer == 1) {
-            AudioDataI audioData = read_audio_data_I(header, bitstream);
 
-            for (size_t i = 0; i < 12; i++) {
+        AudioDataIII audioData = read_audio_data_III(header, bitstream, reservoir, lastValues, frameCount == 1);
+
+        for (size_t gr = 0; gr < 2; gr++) {
+            for (size_t i = 0; i < 18; i++) {
                 for (size_t j = 0; j < 32; j++) {
-                    in_samples[0][j] = audioData.requantized_samples[0][j][i];
+                    in_samples[0][j] = 1 * audioData.output[gr][0][j][i];
+                    in_samples[1][j] = 1 * audioData.output[gr][1][j][i];
                 }
                 synthesis(V1, in_samples[0], out_samples[0]);
+                synthesis(V2, in_samples[1], out_samples[1]);
                 write_samples();
             }
-        } else if (header.layer == 2) {
-            AudioDataII audioData = read_audio_data_II(header, bitstream);
-
-            for (size_t i = 0; i < 36; i++) {
-                for (size_t j = 0; j < 32; j++) {
-                    in_samples[0][j] = audioData.requantized_samples[0][j][i];
-                }
-                synthesis(V1, in_samples[0], out_samples[0]);
-                write_samples();
-            }
-        } else if (header.layer == 3) {
-            AudioDataIII audioData = read_audio_data_III(header, bitstream, reservoir, lastValues, frameCount == 1);
-
-            for (size_t gr = 0; gr < 2; gr++) {
-                for (size_t i = 0; i < 18; i++) {
-                    for (size_t j = 0; j < 32; j++) {
-                        in_samples[0][j] = 1 * audioData.output[gr][0][j][i];
-                        in_samples[1][j] = 1 * audioData.output[gr][1][j][i];
-                    }
-                    synthesis(V1, in_samples[0], out_samples[0]);
-                    synthesis(V2, in_samples[1], out_samples[1]);
-                    write_samples();
-                }
-            }
         }
-        else {
-            bitstream.go_to_byte(bitstream.get_current_byte() - 2);
-        }
-
-        lastLayer = header.layer;
     }
 
     write_wav_header(outfile, samplerate, channels, sample_count);
