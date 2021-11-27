@@ -16,6 +16,8 @@ bool operator &(ModeExtension m1, ModeExtension m2) {
 
 enum class Emphasis { None, Microseconds_50_15, Reserved, CCITT_J17 };
 
+enum class BlockType { Normal, Start, Short, End };
+
 struct Header {
     int id;
     int layer;
@@ -30,7 +32,10 @@ struct Header {
     bool original_bit;
     Emphasis emphasis;
     unsigned short crc16;
-    int frame_size;
+    size_t frame_size;
+    size_t slot_count;
+
+    size_t channel_count() const { return mode == Mode::SingleChannel ? 1 : 2; }
 };
 
 struct layer_III_sideinfo {
@@ -41,9 +46,9 @@ struct layer_III_sideinfo {
     int big_values[2][2] = {};
     int global_gain[2][2] = {};
     int scalefac_compress[2][2] = {};
-    int window_switching_flag[2][2] = {};
-    int block_type[2][2] = {};
-    int mixed_block_flag[2][2] = {};
+    bool window_switching_flag[2][2] = {};
+    BlockType block_type[2][2] = {};
+    bool mixed_block_flag[2][2] = {};
     int table_select[2][2][3] = {};
     int sub_block_gain[2][2][3] = {};
     int region0_count[2][2] = {};
@@ -54,7 +59,7 @@ struct layer_III_sideinfo {
     int scalefac[2][39] = {};
 };
 
-struct AudioDataIII {
+struct audio_data_III {
     int samples[2][2][576] = {};
     double requantized_samples[2][2][576] = {};
     double output[2][2][32][18] = {};
@@ -91,10 +96,11 @@ Header read_header(BitStream& bitstream) {
     if (!header.protection_bit)
         header.crc16            = bitstream.read_bits<unsigned short>(16);
     header.frame_size           = 144 * header.bitrate * 1000 / header.sampling_frequency + header.padding_bit;
+    header.slot_count           = header.frame_size - ((header.channel_count() == 2 ? 32 : 17) + (header.protection_bit ? 0 : 2) + 4);
     return header;
 }
 
-const HuffmanEntry4& huffman_decode(RingBitStream& bitstream, const HuffmanEntry4* table, int size) {
+const HuffmanEntry4& huffman_decode(RingBitStream& bitstream, const HuffmanEntry4* table, size_t size) {
     if (size == 1) {
         return *table;
     }
@@ -120,7 +126,7 @@ const HuffmanEntry4& huffman_decode(RingBitStream& bitstream, const HuffmanEntry
     throw std::exception();
 }
 
-const HuffmanEntry2& huffman_decode(RingBitStream& bitstream, const HuffmanEntry2* table, int size) {
+const HuffmanEntry2& huffman_decode(RingBitStream& bitstream, const HuffmanEntry2* table, size_t size) {
     if (size == 1) {
         return *table;
     }
@@ -166,7 +172,7 @@ void exponents_III(const Header& header, const layer_III_sideinfo& si, int gr, i
     double scalefac_multiplier = si.scalefac_scale[gr][ch] ? 1 : 0.5;
     int gain = si.global_gain[gr][ch] - 210;
 
-    if (si.block_type[gr][ch] != 2) {
+    if (si.block_type[gr][ch] != BlockType::Short) {
         ScaleFactorBand* sfb = ScaleFactorBandsLong[header.sampling_frequency].data();
         for (size_t sfbi = 0; sfbi < 22; sfbi++) {
             double exponent = gain/4.0 - (scalefac_multiplier * (si.scalefac[ch][sfbi] + si.preflag[gr][ch] * layer_III_pretab[sfbi]));
@@ -222,7 +228,7 @@ void reorder_III(double samples[576], const Header& header, const layer_III_side
 
     if (si.mixed_block_flag[gr][ch]) {
         while (l < 36) {
-            for (int i = 0; i < sfb[sfbi].width; i++) {
+            for (size_t i = 0; i < sfb[sfbi].width; i++) {
                 tmp[l++] = samples[l];
             }
             sfbi++;
@@ -230,7 +236,7 @@ void reorder_III(double samples[576], const Header& header, const layer_III_side
     }
 
     while (l < 576 && sfbi <= 36) {
-        for (int i = 0; i < sfb[sfbi].width; i++) {
+        for (size_t i = 0; i < sfb[sfbi].width; i++) {
             tmp[l++] = samples[sfb[sfbi + 0].start + i];
             tmp[l++] = samples[sfb[sfbi + 1].start + i];
             tmp[l++] = samples[sfb[sfbi + 2].start + i];
@@ -241,7 +247,7 @@ void reorder_III(double samples[576], const Header& header, const layer_III_side
     memcpy(samples, tmp, 576 * sizeof(double));
 }
 
-void alias_reduce_III(AudioDataIII& data, int ch, int gr, int max_index = 576) {
+void alias_reduce_III(audio_data_III& data, size_t ch, size_t gr, size_t max_index = 576) {
     for (size_t sb = 0; sb < max_index - 18; sb += 18) {
         for (size_t i = 0; i < 8; i++) {
             const int idx1 = sb + 17 - i;
@@ -302,13 +308,13 @@ void imdct_III(double input[18], double output[36], int block_type) {
             }
 
             switch (block_type) {
-            case 0:
+            case BlockType::Normal:
                 output[i] *= layer_III_window_0[i];
                 break;
-            case 1:
+            case BlockType::Start:
                 output[i] *= layer_III_window_1[i];
                 break;
-            case 3:
+            case BlockType::End:
                 output[i] *= layer_III_window_3[i];
                 break;
             }
@@ -317,8 +323,6 @@ void imdct_III(double input[18], double output[36], int block_type) {
 }
 
 void read_side_info_III(const Header& header, layer_III_sideinfo& si, BitStream& bitstream) {
-    const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
-
     si.main_data_begin = bitstream.read_bits(9);
 
     if (header.mode == Mode::SingleChannel) {
@@ -327,28 +331,28 @@ void read_side_info_III(const Header& header, layer_III_sideinfo& si, BitStream&
         si.private_bits = bitstream.read_bits(3);
     }
 
-    for (size_t ch = 0; ch < channels; ch++) {
+    for (size_t ch = 0; ch < header.channel_count(); ch++) {
         for (size_t scfsi_band = 0; scfsi_band < 4; scfsi_band++) {
             si.scfsi[ch][scfsi_band] = bitstream.read_bits(1);
         }
     }
 
     for (size_t gr = 0; gr < 2; gr++) {
-        for (size_t ch = 0; ch < channels; ch++) {
+        for (size_t ch = 0; ch < header.channel_count(); ch++) {
             si.part2_3_length[gr][ch] = bitstream.read_bits(12);
             si.big_values[gr][ch] = bitstream.read_bits(9);
             si.global_gain[gr][ch] = bitstream.read_bits(8);
             si.scalefac_compress[gr][ch] = bitstream.read_bits(4);
-            si.window_switching_flag[gr][ch] = bitstream.read_bits(1);
+            si.window_switching_flag[gr][ch] = bitstream.read_bit();
             if (si.window_switching_flag[gr][ch]) {
-                si.block_type[gr][ch] = bitstream.read_bits(2);
-                si.mixed_block_flag[gr][ch] = bitstream.read_bits(1);
+                si.block_type[gr][ch] = static_cast<BlockType>(bitstream.read_bits(2));
+                si.mixed_block_flag[gr][ch] = bitstream.read_bit();
                 for (size_t region = 0; region < 2; region++)
                     si.table_select[gr][ch][region] = bitstream.read_bits(5);
                 for (size_t window = 0; window < 3; window++)
                     si.sub_block_gain[gr][ch][window] = bitstream.read_bits(3);
-                si.region0_count[gr][ch] = (si.block_type[gr][ch] == 2 && !si.mixed_block_flag[gr][ch]) ? 8 : 7;
-                si.region1_count[gr][ch] = (si.block_type[gr][ch] == 2 && !si.mixed_block_flag[gr][ch]) ? 36 : (20 - si.region0_count[gr][ch]);
+                si.region0_count[gr][ch] = (si.block_type[gr][ch] == BlockType::Short && !si.mixed_block_flag[gr][ch]) ? 8 : 7;
+                si.region1_count[gr][ch] = 36;
             } else {
                 for (size_t region = 0; region < 3; region++)
                     si.table_select[gr][ch][region] = bitstream.read_bits(5);
@@ -364,7 +368,7 @@ void read_side_info_III(const Header& header, layer_III_sideinfo& si, BitStream&
 
 void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBitStream& reservoir, int gr, int ch) {
     size_t sfb = 0;
-    if (si.window_switching_flag[gr][ch] == 1 && si.block_type[gr][ch] == 2) {
+    if (si.window_switching_flag[gr][ch] && si.block_type[gr][ch] == BlockType::Short) {
         if (si.mixed_block_flag[gr][ch]) {
             for (size_t i = 0; i < 8; i++) {
                 const int bits = layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]];
@@ -427,29 +431,37 @@ int read_huffman_data_III(const Header& header,
                           const layer_III_sideinfo& si,
                           RingBitStream& reservoir,
                           int gr, int ch,
-                          AudioDataIII& result,
+                          audio_data_III& result,
                           int granule_bits_read) {
 
     double exponents[576] = {};
-
     exponents_III(header, si, gr, ch, exponents);
 
-    int count = 0;
-    int scaleFactorBandIndex1 = si.region0_count[gr][ch] + 1;
-    int scaleFactorBandIndex2 = scaleFactorBandIndex1 + si.region1_count[gr][ch] + 1;
-    if (scaleFactorBandIndex2 >= ScaleFactorBandsLong[header.sampling_frequency].size()) {
-        scaleFactorBandIndex2 = ScaleFactorBandsLong[header.sampling_frequency].size() - 1;
-    }
+    // TODO: Use nicer array implementation instead of raw pointers 
+    const ScaleFactorBand* sfb = si.block_type[gr][ch] == BlockType::Short ?
+        (si.mixed_block_flag[gr][ch] ?
+            ScaleFactorBandsMixed[header.sampling_frequency].data() :
+            ScaleFactorBandsShort[header.sampling_frequency].data()) :
+        ScaleFactorBandsLong[header.sampling_frequency].data();
 
-    int region1_start = ScaleFactorBandsLong[header.sampling_frequency][scaleFactorBandIndex1].start;
-    int region2_start = ScaleFactorBandsLong[header.sampling_frequency][scaleFactorBandIndex2].start;
-    if (si.window_switching_flag[gr][ch] && si.block_type[gr][ch] == 2) {
+    const size_t sfb_size = si.block_type[gr][ch] == BlockType::Short ?
+            ScaleFactorBandsShort[header.sampling_frequency].size() :
+            ScaleFactorBandsLong[header.sampling_frequency].size();
+
+    const size_t scaleFactorBandIndex1 = si.region0_count[gr][ch] + 1;
+    const size_t scaleFactorBandIndex2 = std::min(sfb_size - 1, scaleFactorBandIndex1 + si.region1_count[gr][ch] + 1);
+
+    int region1_start = sfb[scaleFactorBandIndex1].start;
+    int region2_start = sfb[scaleFactorBandIndex2].start;
+    if (si.window_switching_flag[gr][ch] && si.block_type[gr][ch] == BlockType::Short) {
         region1_start = 36;
         region2_start = 576;
     }
 
     const HuffmanTable2* table = nullptr;
+    size_t count = 0;
     size_t i = 0;
+
     for (; i < si.big_values[gr][ch] * 2; i += 2) {
         if (i < region1_start) {
             table = &HuffmanTables2[si.table_select[gr][ch][0]];
@@ -578,7 +590,7 @@ int get_last_nonempty_band(double* samples, ScaleFactorBand* bands, size_t size)
     return last_nonempty_band;
 }
 
-void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_III_sideinfo& si) {
+void stereo_III(const Header& header, audio_data_III& data, int gr, const layer_III_sideinfo& si) {
     const double SQRT_2 = 1.4142135623730950488016887242097;
 
     size_t sfbi_ms_start = 0;
@@ -607,7 +619,7 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
         }
     };
 
-    if (si.block_type[gr][1] == 2) {
+    if (si.block_type[gr][1] == BlockType::Short) {
         if (!si.mixed_block_flag[gr][1]) {
             sfbs = ScaleFactorBandsShort[header.sampling_frequency].data();
             sfbs_length = ScaleFactorBandsShort[header.sampling_frequency].size();
@@ -646,15 +658,11 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
     }
 }
 
-AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, RingBitStream& reservoir, double lastValues[2][32][18], bool first_frame) {
+audio_data_III read_audio_data_III(const Header& header, BitStream& bitstream, RingBitStream& reservoir, double lastValues[2][32][18], bool first_frame) {
+    audio_data_III result;
     layer_III_sideinfo si;
-    const int channels = header.mode == Mode::SingleChannel ? 1 : 2;
 
     read_side_info_III(header, si, bitstream);
-
-    std::cout << "Gr0 bt " << si.block_type[0][0] << ", Gr1 bt " << si.block_type[1][0] << std::endl;
-
-    AudioDataIII result;
 
     // Copy all the remaining data in this frame into the bit reservoir.
     // Append it to the left-over data of the last frame in order to build the
@@ -663,8 +671,7 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
         _ASSERT(bitstream.get_current_bit() == 0);
         reservoir.seek_to_end();
 
-        size_t frame_data_slots = header.frame_size - ((channels == 2 ? 32 : 17) + (header.protection_bit ? 0 : 2) + 4);
-        for (size_t i = 0; i < frame_data_slots; i++) {
+        for (size_t i = 0; i < header.slot_count; i++) {
             unsigned char data = bitstream.read_bits<unsigned char>(8);
             reservoir.write(&data, 1);
         }
@@ -677,13 +684,13 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
     }
 
     for (size_t gr = 0; gr < 2; gr++) {
-        for (size_t ch = 0; ch < channels; ch++) {
+        for (size_t ch = 0; ch < header.channel_count(); ch++) {
             const size_t position_before_scale_factors = reservoir.position();
             read_scale_factors_III(header, si, reservoir, gr, ch);
             const size_t scale_factors_size = reservoir.position() - position_before_scale_factors;
             read_huffman_data_III(header, si, reservoir, gr, ch, result, scale_factors_size);
 
-            if (si.block_type[gr][ch] == 2) {
+            if (si.block_type[gr][ch] == BlockType::Short) {
                 reorder_III(result.requantized_samples[ch][gr], header, si, gr, ch);
 
                 // Only reduce alias for lowest 2 bands as they're long.
@@ -702,13 +709,13 @@ AudioDataIII read_audio_data_III(const Header& header, BitStream& bitstream, Rin
     }
 
     for (size_t gr = 0; gr < 2; gr++) {
-        for (size_t ch = 0; ch < channels; ch++) {
+        for (size_t ch = 0; ch < header.channel_count(); ch++) {
             for (size_t i = 0; i < 576; i += 18) {
-                int block_type = si.block_type[gr][ch];
+                BlockType block_type = si.block_type[gr][ch];
                 if (i < 36 && si.mixed_block_flag[gr][ch]) {
                     // ISO/IEC 11172-3: if mixed_block_flag is set, the lowest
                     // two subbands are transformed with normal window.
-                    block_type = 0;
+                    block_type = BlockType::Normal;
                 }
 
                 double output[36];
@@ -739,7 +746,7 @@ void synthesis(float *V, float samples[32], float result[32]) {
     for (size_t i = 0; i < 64; i++) {
         V[i] = 0;
         for (size_t k = 0; k < 32; k++) {
-            const float N = cos((16 + i) * (2 * k + 1) * M_PI / 64.0f);
+            const double N = cos((16 + i) * (2 * k + 1) * M_PI / 64.0);
             V[i] += N * samples[k];
         }
     }
@@ -848,12 +855,11 @@ int main()
             header.bitrate << ", " <<
             (int)header.mode << ", " << 
             (int)header.mode_extension << ", " << 
-            header.frame_size << ", " << 
-            " (" << frameCount << ")" << std::endl;
+            header.frame_size << std::endl;
 
         ++frameCount;
 
-        AudioDataIII audioData = read_audio_data_III(header, bitstream, reservoir, lastValues, frameCount == 1);
+        audio_data_III audioData = read_audio_data_III(header, bitstream, reservoir, lastValues, frameCount == 1);
 
         for (size_t gr = 0; gr < 2; gr++) {
             for (size_t i = 0; i < 18; i++) {

@@ -3,7 +3,7 @@
 #include <array>
 #include <map>
 
-const float M_PI = 3.14159265359;
+const double M_PI = 3.14159265359;
 
 // ISO/IEC 11172-3 (2.4.2.3)
 int table_layer[] = { -1, 3, 2, 1 };
