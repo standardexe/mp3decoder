@@ -260,32 +260,101 @@ void alias_reduce_III(audio_data_III& data, size_t ch, size_t gr, size_t max_ind
     }
 }
 
-void imdct_III(double input[18], double output[36], int block_type) {
-    if (block_type == 2) {
-        const int n = 12;
-        double temp[36];
+// Implementation of "Radix-3 Algorithm for the Fast Computation of Forward and Inverse MDCT"
+// by Shu, Bao, Toumoulin, Luo, 2007.
+template<size_t N>
+struct mdct {
+    const double sqrt_3 = sqrt(3);
+    double phi[N / 3][N / 6];
 
-        for (size_t i = 0; i < n; i++) {
-            temp[i+0] = 0;
-            for (size_t k = 0; k < n / 2; k++) {
-                temp[i+0] += input[3*k+0] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
+    constexpr mdct() {
+        static_assert(N % 12 == 0, "Sizes have to be a multiple of 12!");
+        for (size_t n = 0; n < N / 3; n++) {
+            for (size_t k = 0; k < N / 6; k++) {
+                phi[n][k] = 3 * M_PI / (2 * N) * (2 * n + 1 + N / 6.0) * (2 * k + 1); 
             }
+        }
+    }
+
+    void inverse(double input[N / 2], double output[N]) {
+        auto f_k = [=](const int k) -> double { return input[k]; };
+        auto g_k = [=](const int k) -> double { return input[N / 6 + k]; };
+        auto h_k = [=](const int k) -> double { return input[N / 3 + k]; };
+
+        auto A = [&](const int n) -> double {
+            double sum = 0;
+            for (int k = 0; k < N / 6; k++) {
+                const double f = f_k(k);
+                const double g = g_k(N / 6 - 1 - k);
+                const double h = h_k(k);
+                sum += (f - g - h) * cos(phi[n][k]);
+            }
+            return sum;
+        };
+
+        auto B = [&](const int n) -> double {
+            double sum = 0;
+            for (int k = 0; k < N / 6; k++) {
+                const double theta = (2 * k + 1) * M_PI / N;
+                const double f = f_k(k);
+                const double g = g_k(N / 6 - 1 - k);
+                const double h = h_k(k);
+                sum += ((2 * f + g + h) * cos(theta) + sqrt_3 * (h - g) * sin(theta)) * cos(phi[n][k]);
+            }
+            return sum;
+        };
+
+        auto C = [&](const int n) -> double {
+            constexpr int L = N / 12;
+            double sum = 0;
+            for (int k = 0; k < N / 6; k++) {
+                const double theta = (2 * k + 1) * M_PI / N;
+                const double f = f_k(N / 6 - 1 - k);
+                const double g = g_k(k);
+                const double h = h_k(N / 6 - 1 - k);
+                sum += (sqrt_3 * (f + g) * cos(theta) - (f - g + 2 * h) * sin(theta)) * cos(phi[n][k]);
+            }
+            sum *= pow(-1, n + L);
+            return sum;
+        };
+
+        for (size_t n = 0; n < N / 3; n++) {
+            const double b = B(n);
+            const double c = C(n);
+            output[3 * n + 0] = (b + c) / 2;
+            output[3 * n + 1] = A(n);
+            output[3 * n + 2] = (b - c) / 2;
+        }
+    }
+};
+
+void imdct_III(double input[18], double output[36], BlockType block_type) {
+    if (block_type == BlockType::Short) {
+        const int N = 12;
+        double temp[N * 3];
+        double temp_in[N / 2];
+
+        for (size_t k = 0; k < N / 2; k++) {
+            temp_in[k] = input[3 * k + 0];
+        }
+        mdct<N>().inverse(temp_in, temp + 0);
+        for (size_t i = 0; i < N; i++) {
             temp[i+0] *= layer_III_window_2[i];
         }
 
-        for (size_t i = 0; i < n; i++) {
-            temp[i+12] = 0;
-            for (size_t k = 0; k < n / 2; k++) {
-                temp[i+12] += input[3*k+1] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
-            }
+        for (size_t k = 0; k < N / 2; k++) {
+            temp_in[k] = input[3 * k + 1];
+        }
+        mdct<N>().inverse(temp_in, temp + 12);
+        for (size_t i = 0; i < N; i++) {
             temp[i+12] *= layer_III_window_2[i];
         }
 
-        for (size_t i = 0; i < n; i++) {
-            temp[i+24] = 0;
-            for (size_t k = 0; k < n / 2; k++) {
-                temp[i+24] += input[3*k+2] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
-            }
+        for (size_t k = 0; k < N / 2; k++) {
+            temp_in[k] = input[3 * k + 2];
+        }
+        mdct<N>().inverse(temp_in, temp + 24);
+        for (size_t i = 0; i < N; i++) {
             temp[i+24] *= layer_III_window_2[i];
         }
 
@@ -300,13 +369,8 @@ void imdct_III(double input[18], double output[36], int block_type) {
         for (size_t i = 30; i < 36; i++) output[i] = 0;
 
     } else {
-        const int n = 36;
-        for (size_t i = 0; i < n; i++) {
-            output[i] = 0;
-            for (size_t k = 0; k < n / 2; k++) {
-                output[i] += input[k] * cos(M_PI / (2 * n) * (2 * i + 1 + n / 2) * (2 * k + 1));
-            }
-
+        mdct<36>().inverse(input, output);
+        for (size_t i = 0; i < 36; i++) {
             switch (block_type) {
             case BlockType::Normal:
                 output[i] *= layer_III_window_0[i];
