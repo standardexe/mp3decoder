@@ -386,6 +386,9 @@ void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBi
                 si.scalefac[ch][sfb++] = reservoir.read_bits(bits); 
             }
         }
+        si.scalefac[ch][sfb++] = 0;
+        si.scalefac[ch][sfb++] = 0;
+        si.scalefac[ch][sfb++] = 0;
     } else {
         auto scalefactor_bits = [&gr, &ch, &si](int sfb) -> int {
             return sfb <= 10 ? layer_III_scalefac_compress_slen1[si.scalefac_compress[gr][ch]]
@@ -416,8 +419,8 @@ void read_scale_factors_III(const Header& header, layer_III_sideinfo& si, RingBi
                 si.scalefac[ch][sfb] = reservoir.read_bits(bits);
             }
         }
+        si.scalefac[ch][21] = 0;
     }
-    for (; sfb < 39; sfb++) si.scalefac[ch][sfb] = 0;
 }
 
 int read_huffman_data_III(const Header& header,
@@ -605,7 +608,7 @@ void stereo_III(const Header& header, AudioDataIII& data, int gr, const layer_II
     };
 
     if (si.block_type[gr][1] == 2) {
-        if (si.mixed_block_flag[gr][1]) {
+        if (!si.mixed_block_flag[gr][1]) {
             sfbs = ScaleFactorBandsShort[header.sampling_frequency].data();
             sfbs_length = ScaleFactorBandsShort[header.sampling_frequency].size();
         } else {
